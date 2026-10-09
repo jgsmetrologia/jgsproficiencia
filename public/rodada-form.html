@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Enviar resultados — Ensaio de Proficiência</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="rodada-client.css?v=2">
+</head>
+<body>
+  <img src="/logo.png" id="logoForPdf" alt="" style="display:none" crossorigin="anonymous">
+  <div class="client-bar">
+    <span id="clientName">Olá</span>
+    <a href="/rodadas.html" class="meus-ensaios-link">Trocar rodada</a>
+    <a href="/meus-ensaios.html" class="meus-ensaios-link">Meus ensaios</a>
+    <button type="button" id="logoutBtn">Sair</button>
+  </div>
+
+  <main class="dynamic-form-wrap">
+    <header class="dynamic-form-header">
+      <span class="badge">Formulário da rodada</span>
+      <h1 id="rodadaNome">Carregando...</h1>
+    </header>
+    <form id="rodadaForm">
+      <section class="dynamic-section">
+        <div class="dynamic-section-title">Identificação</div>
+        <div class="dynamic-fields">
+          <label>Código do participante<input id="codigo" readonly></label>
+          <label>Data da chegada<input id="data_chegada" type="date" required></label>
+          <label>Data da calibração<input id="data_calibracao" type="date" required></label>
+          <label>Data da saída<input id="data_saida" type="date" required></label>
+          <label>Técnico responsável<input id="tecnico_nome" required></label>
+        </div>
+      </section>
+      <div id="itensContainer"></div>
+      <div id="formError" class="error-msg"></div>
+      <button class="primary dynamic-submit" type="submit" id="submitBtn">Enviar resultados</button>
+    </form>
+    <section id="successBox" class="dynamic-success" hidden>
+      <h2>Resultados enviados</h2>
+      <p>O envio foi registrado com sucesso. Código: <strong id="successCode"></strong></p>
+      <a class="secondary" href="/rodadas.html">Voltar às rodadas</a>
+    </section>
+  </main>
+
+  <script src="pdf-utils.js"></script>
+  <script src="rodada-form.js?v=11"></script>
+</body>
+</html>

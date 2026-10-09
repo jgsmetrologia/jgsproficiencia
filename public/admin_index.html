@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Área administrativa — Ensaio de Proficiência</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="admin-styles.css">
+</head>
+<body>
+
+<img src="/logo.png" id="logoForPdf" alt="" style="display:none" crossorigin="anonymous">
+
+<div class="admin-wrap">
+
+    <div id="loginScreen" class="login-card">
+    <img src="/logo.png" alt="JGS Proficiência" class="brand-logo">
+    <h1>Área administrativa</h1>
+    <p class="hint">Entre com seu usuário e senha para acessar os resultados enviados.</p>
+    <div class="field">
+      <label>Usuário</label>
+      <input type="text" id="usernameInput" placeholder="Usuário" autocomplete="username">
+    </div>
+    <div class="field">
+      <label>Senha</label>
+      <input type="password" id="passwordInput" placeholder="Senha">
+    </div>
+    <button class="primary" id="loginBtn">Entrar</button>
+    <div class="error-msg" id="loginError"></div>
+  </div>
+
+    <div id="panelScreen" style="display:none;">
+    <header class="admin-header">
+      <img src="/logo.png" alt="JGS Proficiência" class="brand-logo">
+      <h1>Área administrativa</h1>
+      <p class="hint">Envios recebidos e clientes com acesso ao formulário.</p>
+    </header>
+
+    <div class="tabs">
+      <button type="button" class="tab-btn active" data-tab="envios">Envios</button>
+      <button type="button" class="tab-btn" data-tab="clientes">Clientes</button>
+      <button type="button" class="tab-btn" data-tab="rodada">Rodada Proefi</button>
+    </div>
+
+        <div class="tab-panel active" id="tab-envios">
+      <div class="toolbar">
+        <input type="text" id="searchInput" placeholder="Buscar por código, razão social, técnico ou usuário...">
+        <button class="secondary" id="refreshBtn">↻ Atualizar</button>
+        <span class="count" id="countLabel"></span>
+      </div>
+
+      <div class="table-wrap">
+        <table id="submissionsTable">
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Razão social</th>
+              <th>Técnico</th>
+              <th>Cliente (login)</th>
+              <th>Rodada</th>
+              <th>Data da calibração</th>
+              <th>Enviado em</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+        <div id="emptyState" class="empty-state" style="display:none;">Nenhum envio encontrado ainda.</div>
+      </div>
+    </div>
+
+        <div class="tab-panel" id="tab-clientes">
+
+      <div class="new-client-card">
+        <h3>Novo cliente</h3>
+        <div class="new-client-form">
+          <div class="field">
+            <label>Usuário (login)</label>
+            <input type="text" id="newClientUsername" placeholder="ex.: laboratorioxyz">
+          </div>
+          <div class="field">
+            <label>Nome / Razão social (opcional)</label>
+            <input type="text" id="newClientNome" placeholder="ex.: Laboratório XYZ Ltda">
+          </div>
+          <button class="primary" id="createClientBtn" style="width:auto;">Criar cliente</button>
+        </div>
+        <div class="error-msg" id="newClientError"></div>
+      </div>
+
+      <div class="toolbar">
+        <input type="text" id="clientSearchInput" placeholder="Buscar por usuário ou nome...">
+        <button class="secondary" id="refreshClientsBtn">↻ Atualizar</button>
+        <span class="count" id="clientCountLabel"></span>
+      </div>
+
+      <div class="table-wrap">
+        <table id="clientsTable">
+          <thead>
+            <tr>
+              <th>Usuário</th>
+              <th>Nome</th>
+              <th>Status</th>
+              <th>Senha</th>
+              <th>Criado em</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="clientsTableBody"></tbody>
+        </table>
+        <div id="clientsEmptyState" class="empty-state" style="display:none;">Nenhum cliente cadastrado ainda.</div>
+      </div>
+    </div>
+
+        <div class="tab-panel" id="tab-rodada">
+
+      <div class="new-client-card">
+        <h3 id="rodadaFormTitle">Nova rodada</h3>
+        <p class="hint" style="text-align:left; margin-bottom:18px;">
+          Rodadas marcadas como "Ativa" aparecem no site público — você pode manter várias rodadas ativas ao mesmo tempo.
+        </p>
+
+        <div class="new-client-form" style="align-items:flex-start;">
+          <div class="field" style="flex:1 1 100%; min-width:100%;">
+            <label>Nome da rodada</label>
+            <input type="text" id="rodadaNomeInput" placeholder="ex.: Vidraria Volumétrica">
+          </div>
+          <div class="field" style="flex:1 1 100%; min-width:100%;">
+            <label>Descrição (texto exibido acima dos itens dessa rodada)</label>
+            <textarea id="rodadaDescricaoInput" rows="3" placeholder="Texto opcional..."
+              style="font-family:'IBM Plex Mono', monospace; font-size:14px; padding:10px 12px; border:1px solid #33403E; background:#0D1315; color:var(--ink); border-radius:var(--radius); width:100%; resize:vertical;"></textarea>
+          </div>
+          <div class="field" style="flex:0 0 auto;">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; color:var(--ink);">
+              <input type="checkbox" id="rodadaAtivaInput" checked style="width:auto;">
+              Rodada ativa (visível no site)
+            </label>
+          </div>
+        </div>
+
+        <h3 style="margin-top:22px;">Itens / equipamentos</h3>
+        <p class="hint" style="text-align:left; margin:8px 0 14px;">
+          Cada equipamento abre sua própria aba. Marque múltiplos pontos quando necessário. Opções gerais podem valer para todos os pontos ou apenas uma vez.
+        </p>
+        <div id="rodadaItensList"></div>
+        <button class="secondary" type="button" id="addRodadaItemBtn" style="margin-top:6px;">+ Adicionar item</button>
+
+        <div style="margin-top:22px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+          <button class="primary" type="button" id="saveRodadaBtn" style="width:auto;">Criar rodada</button>
+          <button class="secondary" type="button" id="cancelRodadaEditBtn" style="display:none;">Cancelar edição</button>
+          <span class="count" id="rodadaSaveStatus"></span>
+        </div>
+        <div class="error-msg" id="rodadaError"></div>
+      </div>
+
+      <div class="toolbar">
+        <span class="count" id="rodadaCountLabel"></span>
+        <button class="secondary" id="refreshRodadasBtn" style="margin-left:auto;">↻ Atualizar</button>
+      </div>
+
+      <div class="table-wrap">
+        <table id="rodadasTable">
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>Itens</th>
+              <th>Status</th>
+              <th>Criada em</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="rodadasTableBody"></tbody>
+        </table>
+        <div id="rodadasEmptyState" class="empty-state" style="display:none;">Nenhuma rodada cadastrada ainda.</div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<div class="modal-backdrop" id="tempPwModal">
+  <div class="modal-box">
+    <button type="button" class="modal-close" data-close="tempPwModal">&times;</button>
+    <h2 id="tempPwTitle">Senha temporária</h2>
+    <p class="modal-sub">Copie e envie esta mensagem ao cliente. A senha temporária só é exibida uma vez — no primeiro login, ele será obrigado a criar uma senha definitiva.</p>
+    <div class="temp-pw-box" id="tempPwValue"></div>
+    <button class="primary" type="button" id="copyTempPwBtn" style="width:100%;">Copiar</button>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="viewModal">
+  <div class="modal-box">
+    <button type="button" class="modal-close" data-close="viewModal">&times;</button>
+    <h2 id="viewTitle">Detalhes do envio</h2>
+    <p class="modal-sub" id="viewSub"></p>
+    <div id="viewContent"></div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="clientRodadasModal">
+  <div class="modal-box">
+    <button type="button" class="modal-close" data-close="clientRodadasModal">&times;</button>
+    <h2 id="clientRodadasTitle">Rodadas do cliente</h2>
+    <p class="modal-sub">Selecione as rodadas que este laboratório poderá acessar.</p>
+    <div id="clientRodadasList" class="client-rodadas-list"></div>
+    <div class="error-msg" id="clientRodadasError"></div>
+    <button class="primary" type="button" id="saveClientRodadasBtn" style="width:100%;">Salvar rodadas</button>
+  </div>
+</div>
+
+<script src="pdf-utils.js"></script>
+<script src="admin.js?v=9"></script>
+</body>
+</html>

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meus ensaios — Ensaio de Proficiência</title>
+<script>
+  if(!localStorage.getItem('client_token')){
+    window.location.replace('login.html');
+  }
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<img src="logo.png" id="logoForPdf" alt="" style="display:none" crossorigin="anonymous">
+
+<div class="client-bar" id="clientBar">
+  <span id="clientBarName">Olá</span>
+  <a href="/formulario" class="meus-ensaios-link">Novo envio</a>
+  <button type="button" id="logoutBtn">Sair</button>
+</div>
+
+<div class="meus-ensaios-wrap">
+
+  <header class="meus-ensaios-header">
+    <div>
+      <h1>Meus ensaios</h1>
+      <p class="hint">Resultados que você já enviou para a JGS.</p>
+    </div>
+    <a href="/formulario" class="back-link">← Novo envio</a>
+  </header>
+
+  <div class="me-toolbar">
+    <input type="text" id="meSearchInput" placeholder="Buscar por código ou técnico...">
+    <span class="count" id="meCountLabel"></span>
+  </div>
+
+  <div class="me-table-wrap">
+    <table id="meTable">
+      <thead>
+        <tr>
+          <th>Código do participante</th>
+          <th>Rodada</th>
+          <th>Técnico responsável</th>
+          <th>Data da calibração</th>
+          <th>Enviado em</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="meTableBody"></tbody>
+    </table>
+    <div id="meEmptyState" class="me-empty-state" style="display:none;">Você ainda não enviou nenhum resultado.</div>
+  </div>
+
+</div>
+
+<div class="me-modal-backdrop" id="meViewModal">
+  <div class="me-modal-box">
+    <button type="button" class="me-modal-close" data-close="meViewModal">&times;</button>
+    <h2 id="meViewTitle">Detalhes do envio</h2>
+    <p class="modal-sub" id="meViewSub"></p>
+    <div id="meViewContent"></div>
+  </div>
+</div>
+
+<script src="pdf-utils.js"></script>
+<script src="meus-ensaios.js?v=2"></script>
+</body>
+</html>

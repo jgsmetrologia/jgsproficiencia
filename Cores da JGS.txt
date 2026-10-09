@@ -1,0 +1,13 @@
+Proficiência
+
+  --color-primary: #26ff00;
+  --color-primary-dark: #18A300
+  --color-primary-light: #74FF5C;
+
+Metrologia
+
+  Cor principal AZUL #
+
+  --color-primary: #352EFF;
+  --color-primary-dark: #0A00FF;
+  --color-primary-light: #8E8AFF;

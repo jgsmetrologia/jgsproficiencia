@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minhas rodadas — Ensaio de Proficiência</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="rodada-client.css">
+</head>
+<body>
+  <div class="client-bar">
+    <span id="clientName">Olá</span>
+    <a href="meus-ensaios.html" class="meus-ensaios-link">Meus ensaios</a>
+    <button type="button" id="logoutBtn">Sair</button>
+  </div>
+
+  <main class="client-choice-wrap">
+    <header class="client-choice-header">
+      <span class="client-choice-kicker">Área do cliente</span>
+      <h1>Escolha a rodada</h1>
+      <p>Selecione a rodada para a qual deseja enviar seus resultados.</p>
+    </header>
+    <div id="rodadasList" class="client-rounds-grid"></div>
+    <p id="rodadasEmpty" class="client-empty" hidden>Nenhuma rodada ativa foi atribuída ao seu laboratório.</p>
+    <p id="rodadasError" class="error-msg"></p>
+  </main>
+
+  <script src="rodadas-client.js"></script>
+</body>
+</html>

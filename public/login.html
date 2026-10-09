@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Entrar — Ensaio de Proficiência</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="Login.css">
+</head>
+
+<body>
+
+  <div class="login-page-wrap">
+
+    <div id="loginScreen" class="login-card">
+      <img src="/logo.png" alt="JGS Proficiência" class="brand-logo">
+      <h1>Área do cliente</h1>
+      <p class="hint">Entre com o usuário e a senha fornecidos pelo laboratório.</p>
+      <div class="field">
+        <label>Usuário</label>
+        <input type="text" id="usernameInput" placeholder="Usuário" autocomplete="username">
+      </div>
+      <div class="field">
+        <label>Senha</label>
+        <input type="password" id="passwordInput" placeholder="Senha" autocomplete="current-password">
+      </div>
+      <button class="primary" id="loginBtn" style="width:100%; margin-top:6px;">Entrar</button>
+      <div class="error-msg" id="loginError"></div>
+    </div>
+
+    <div id="changePwScreen" class="login-card" style="display:none;">
+      <img src="logo.png" alt="JGS Proficiência" class="brand-logo">
+      <h1>Crie sua senha</h1>
+      <p class="hint">Este é o seu primeiro acesso. Defina uma senha definitiva (mínimo 6 caracteres) para continuar.
+      </p>
+      <div class="field">
+        <label>Nova senha</label>
+        <input type="password" id="newPasswordInput" placeholder="Nova senha" autocomplete="new-password">
+      </div>
+      <div class="field">
+        <label>Confirme a nova senha</label>
+        <input type="password" id="confirmPasswordInput" placeholder="Confirme a nova senha"
+          autocomplete="new-password">
+      </div>
+      <button class="primary" id="changePwBtn" style="width:100%; margin-top:6px;">Salvar e entrar</button>
+      <div class="error-msg" id="changePwError"></div>
+    </div>
+
+  </div>
+
+  <script src="login.js"></script>
+</body>
+
+</html>

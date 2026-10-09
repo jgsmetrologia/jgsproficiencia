@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<link rel="shortcut icon" href="/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/logo.png?v=3">
+<link rel="apple-touch-icon" href="/logo.png?v=3">
+
+<title>Envio de Resultados — Ensaio de Proficiência</title>
+<script>
+  if(!localStorage.getItem('client_token')){
+    window.location.replace('login.html');
+  }
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="client-bar" id="clientBar">
+  <span id="clientBarName">Olá</span>
+  <a href="meus-ensaios.html" class="meus-ensaios-link">Meus ensaios</a>
+  <button type="button" id="logoutBtn">Sair</button>
+</div>
+
+<div class="mobile-progress">
+  <div class="wrap" style="padding:0;">
+    <div class="mobile-track"><div class="mobile-fill" id="mobileFill"></div></div>
+    <div class="mobile-progress-text"><span id="mobilePct">0%</span> preenchido</div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <header class="hero">
+    <img src="logobranca.png" alt="JGS Proficiência" class="brand-logo">
+    <img src="logo.png" id="logoForPdf" alt="" style="display:none" crossorigin="anonymous">
+    <div class="eyebrow">Ensaio de Proficiência · Vidraria Volumétrica</div>
+    <h1>Envie os resultados<br>da <em>sua calibração</em>.</h1>
+    <p class="hero-sub">Preencha os valores obtidos para cada item de vidraria. Ao final, você baixa um arquivo PDF com os dados.</p>
+    <div class="hero-meta">
+      <div><b>4</b> Instrumentos</div>
+      <div><b>~</b></div>
+      <div>Campos não preenchidos são <span style="color:var(--amber)">DESTACADOS</span> ao enviar</div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <div>
+
+            <section class="section open" data-section="ident">
+        <div class="section-head" onclick="toggleSection(this)">
+          <div class="section-titles">
+            <div class="section-tag">00 — Identificação</div>
+            <div class="section-name">Dados do participante</div>
+          </div>
+          <div class="section-status" data-status="ident">0/4</div>
+          <div class="chevron"></div>
+        </div>
+        <div class="section-body">
+          <div class="section-inner">
+            <div class="field-grid">
+              <div class="field">
+                <label>Código do participante</label>
+                <div class="field-inline">
+                  <input type="text" data-section="ident" id="codigo" readonly>
+                  <button type="button" class="regen-btn" onclick="generateCode()" title="Gerar novo código" aria-label="Gerar novo código">↻</button>
+                </div>
+              </div>
+              <div class="field">
+                <label>Data da chegada</label>
+                <input type="date" data-section="ident" id="data_chegada">
+              </div>
+              <div class="field">
+                <label>Data da calibração</label>
+                <input type="date" data-section="ident" id="data_calibracao">
+              </div>
+              <div class="field">
+                <label>Data da saída</label>
+                <input type="date" data-section="ident" id="data_saida">
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+            <section class="section" data-section="balao">
+        <div class="section-head" onclick="toggleSection(this)">
+          <div class="section-titles">
+            <div class="section-tag">01 — Item de ensaio</div>
+            <div class="section-name">Balão Volumétrico de 100 mL</div>
+          </div>
+          <div class="section-status" data-status="balao">0/11</div>
+          <div class="chevron"></div>
+        </div>
+        <div class="section-body">
+          <div class="section-inner" id="balaoCycles"></div>
+        </div>
+      </section>
+
+            <section class="section" data-section="pipeta">
+        <div class="section-head" onclick="toggleSection(this)">
+          <div class="section-titles">
+            <div class="section-tag">02 — Item de ensaio</div>
+            <div class="section-name">Pipeta Volumétrica de 10 mL</div>
+          </div>
+          <div class="section-status" data-status="pipeta">0/9</div>
+          <div class="chevron"></div>
+        </div>
+        <div class="section-body">
+          <div class="section-inner" id="pipetaCycles"></div>
+        </div>
+      </section>
+
+            <section class="section" data-section="bureta">
+        <div class="section-head" onclick="toggleSection(this)">
+          <div class="section-titles">
+            <div class="section-tag">03 — Item de ensaio</div>
+            <div class="section-name">Bureta de Vidro de 10 mL</div>
+          </div>
+          <div class="section-status" data-status="bureta">0/28</div>
+          <div class="chevron"></div>
+        </div>
+        <div class="section-body">
+          <div class="section-inner" id="buretaPoints"></div>
+        </div>
+      </section>
+
+            <section class="section" data-section="micro">
+        <div class="section-head" onclick="toggleSection(this)">
+          <div class="section-titles">
+            <div class="section-tag">04 — Item de ensaio</div>
+            <div class="section-name">Micropipeta Graduada de 10 μL a 100 μL</div>
+          </div>
+          <div class="section-status" data-status="micro">0/27</div>
+          <div class="chevron"></div>
+        </div>
+        <div class="section-body">
+          <div class="section-inner" id="microPoints"></div>
+        </div>
+      </section>
+
+            <div class="submit-card">
+        <h2>Finalizar envio</h2>
+        <p> <b> Confira a razão social (puxada do seu login) e informe o técnico responsável pela calibração.</b></p>
+        <div class="field-grid">
+          <div class="field"><label>Razão social</label><input type="text" data-section="contato" id="razao_social" readonly></div>
+          <div class="field"><label>Técnico responsável pela calibração</label><input type="text" data-section="contato" id="tecnico_nome" placeholder="Nome do técnico"></div>
+        </div>
+
+        <div class="error-list" id="errorList"></div>
+
+        <div class="submit-actions">
+          <button class="primary" id="submitBtn" onclick="handleSubmit()">Enviar resultados</button>
+          <span class="hint">Baixa um PDF com os dados e envia os resultados para a JGS.</span>
+        </div>
+      </div>
+
+    </div>
+
+        <div class="gauge-col">
+      <svg width="46" height="150" viewBox="0 0 46 150" fill="none" aria-hidden="true">
+        <defs>
+          <clipPath id="cylClip"><rect x="10" y="8" width="26" height="128" rx="2"/></clipPath>
+        </defs>
+        <rect x="10" y="8" width="26" height="128" rx="2" fill="var(--glass)" stroke="var(--paper)" stroke-width="1.6"/>
+        <g clip-path="url(#cylClip)">
+          <rect id="liquidRect" x="10" y="136" width="26" height="0" fill="var(--liquid)"/>
+        </g>
+        <rect x="10" y="8" width="26" height="128" rx="2" fill="none" stroke="var(--paper)" stroke-width="1.6"/>
+                <g stroke="var(--paper)" stroke-width="1">
+          <line x1="10" y1="33" x2="15" y2="33"/>
+          <line x1="10" y1="58" x2="15" y2="58"/>
+          <line x1="10" y1="83" x2="15" y2="83"/>
+          <line x1="10" y1="108" x2="15" y2="108"/>
+        </g>
+        <rect x="6" y="2" width="34" height="8" rx="1" fill="var(--paper)"/>
+      </svg>
+      <div id="gaugePct">0%</div>
+      <div class="gauge-label">preenchido</div>
+    </div>
+  </div>
+
+  <footer> <b> Ensaio de Proficiência — Vidraria Volumétrica </b> </footer>
+</div>
+
+<div class="success-screen" id="successScreen">
+  <div class="success-box">
+    <div class="success-check">✓</div>
+    <h1>Resultados enviados para a JGS!</h1>
+    <p>Recebemos os dados da sua calibração com sucesso. Código do participante: <strong id="successCodigo"></strong></p>
+    <p class="success-file">Um PDF com os dados também foi baixado para o seu computador: <strong id="successFileName"></strong></p>
+    <button class="primary" id="successNewBtn" style="width:auto;">Enviar novo resultado</button>
+  </div>
+</div>
+
+<script src="pdf-utils.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
