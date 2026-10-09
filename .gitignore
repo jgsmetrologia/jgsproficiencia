@@ -38,4 +38,20 @@ coverage/
 
 # Arquivos de Configuração
 
-Cores da Jgs.txt
+   Cores da *.txt
+
+   # Uploads e arquivos gerados
+   uploads/
+   pdfs/
+   *.pdf
+
+   # Bancos e dumps locais
+   *.mdb
+   *.accdb
+   dump/
+   *.bson
+
+   # Chaves e certificados
+   *.pem
+   *.key
+      

@@ -1,0 +1,5 @@
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/jgsmetr1/jgsproficiencia.com.br/
+    - /bin/rsync -a --exclude='.git' --exclude='.env' --exclude='node_modules' ./ $DEPLOYPATH
