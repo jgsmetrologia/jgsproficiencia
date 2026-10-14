@@ -44,7 +44,7 @@
 
     return `
       <article class="scope-card realizado-card">
-        <span class="badge">Ensaio realizado</span>
+        <span class="badge badge-alt">Ensaio realizado</span>
         <h3>${escapeHtml(rodada.nome)}</h3>
         <p>${resumo.map(escapeHtml).join(" · ")}</p>
         <p class="realizado-date">${escapeHtml(dataFinalizacao)}</p>
