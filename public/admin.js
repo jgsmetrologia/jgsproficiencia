@@ -1256,9 +1256,6 @@ async function toggleRodadaFinalizada(btn) {
     extraHtml: finalizada ? '' : pdfPickerMarkup(true),
     fallbackFocus: document.getElementById('refreshRodadasBtn'),
     onConfirm: async () => {
-      if (!finalizada && selectedFile) {
-        await sendRodadaResultPdf(id, selectedFile);
-      }
       const resp = await fetch(`/api/admin/rodadas/${encodeURIComponent(id)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'x-admin-password': adminPassword },
@@ -1266,7 +1263,26 @@ async function toggleRodadaFinalizada(btn) {
       });
       const data = await resp.json();
       if (!resp.ok || !data.ok) throw new Error(data.error || `Erro ao ${action} a rodada.`);
+
+      let pdfError = '';
+      if (!finalizada && selectedFile) {
+        try {
+          await sendRodadaResultPdf(id, selectedFile);
+        } catch (error) {
+          pdfError = error.message || 'Erro ao enviar o PDF.';
+        }
+      }
+
       await loadRodadas();
+      if (pdfError) {
+        setPdfUploadStatus(
+          id,
+          `Ensaio finalizado, mas o PDF não foi enviado: ${pdfError} Tente novamente pelo botão PDF.`,
+          'error'
+        );
+      } else if (!finalizada && selectedFile) {
+        setPdfUploadStatus(id, 'Ensaio finalizado e PDF enviado com sucesso.', 'success');
+      }
     }
   });
   if (!finalizada) {
