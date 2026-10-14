@@ -26,6 +26,31 @@
       </div>`;
   }
 
+  function buildFinalizadaCard(rodada) {
+    const titulos = (rodada.itens || []).filter(Boolean);
+    const resumo = titulos.slice(0, 4);
+    if (titulos.length > 4) resumo.push(`+${titulos.length - 4}`);
+    let dataFinalizacao = "Data não informada";
+    if (rodada.finalizadaEm) {
+      const date = new Date(rodada.finalizadaEm);
+      if (!Number.isNaN(date.getTime())) {
+        dataFinalizacao = date.toLocaleDateString("pt-BR", {
+          month: "long",
+          year: "numeric",
+          timeZone: "UTC",
+        });
+      }
+    }
+
+    return `
+      <article class="scope-card realizado-card">
+        <span class="badge">Ensaio realizado</span>
+        <h3>${escapeHtml(rodada.nome)}</h3>
+        <p>${resumo.map(escapeHtml).join(" · ")}</p>
+        <p class="realizado-date">${escapeHtml(dataFinalizacao)}</p>
+      </article>`;
+  }
+
   async function carregarRodadas() {
     try {
       const resp = await fetch("/api/rodadas");
@@ -59,5 +84,25 @@
     }
   }
 
-  document.addEventListener("DOMContentLoaded", carregarRodadas);
+  async function carregarFinalizadas() {
+    try {
+      const resp = await fetch("/api/rodadas/finalizadas");
+      const data = await resp.json();
+      const section = document.getElementById("realizados");
+      const container = document.getElementById("realizadosContainer");
+      if (!section || !container || !resp.ok || !data.ok || !Array.isArray(data.rodadas)) {
+        return;
+      }
+      if (!data.rodadas.length) return;
+      container.innerHTML = data.rodadas.map(buildFinalizadaCard).join("");
+      section.hidden = false;
+    } catch (e) {
+      console.warn("Não foi possível carregar os ensaios realizados.", e);
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    carregarRodadas();
+    carregarFinalizadas();
+  });
 })();

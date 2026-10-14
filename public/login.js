@@ -7,7 +7,7 @@ const NOME_KEY = 'client_nome';
     .then(r => r.ok ? r.json() : Promise.reject())
     .then(data => {
       if (data.ok && !data.mustChangePassword) {
-        window.location.replace('/rodadas.html');
+        window.location.replace('/resultados');
       }
     })
     .catch(() => {
@@ -56,7 +56,7 @@ async function tryLogin(){
 
     localStorage.setItem(TOKEN_KEY, data.token);
     localStorage.setItem(NOME_KEY, data.nome || username);
-    window.location.replace('/rodadas.html');
+    window.location.replace('/resultados');
   }catch(e){
     errorBox.textContent = 'Erro de conexão. Tente novamente.';
   }
@@ -90,7 +90,7 @@ async function trySetNewPassword(){
     }
     localStorage.setItem(TOKEN_KEY, data.token);
     localStorage.setItem(NOME_KEY, pendingUsername || '');
-    window.location.replace('/formulario');
+    window.location.replace('/resultados');
   }catch(e){
     errorBox.textContent = 'Erro de conexão. Tente novamente.';
   }

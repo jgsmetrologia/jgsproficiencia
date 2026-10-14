@@ -5,7 +5,8 @@ function escapeHtml(value){
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function makeCode(){
@@ -17,7 +18,7 @@ function logout(){
   localStorage.removeItem(ROUND_TOKEN_KEY);
   localStorage.removeItem('client_nome');
   if(token) fetch('/api/client/logout', { method:'POST', headers:{ 'x-client-token': token } }).catch(() => {});
-  window.location.replace('/login.html');
+  window.location.replace('/login');
 }
 
 function fieldHtml(id, label, type = 'text', required = true){
@@ -58,7 +59,7 @@ function renderItem(item, index){
         ${item.opcoes && item.opcoes.length
           ? `<div class="dynamic-general-fields">${item.opcoes.filter(opcao => opcao.repetir === false).map((opcao, optionIndex) => fieldHtml(
               `item_${index}_geral_${optionIndex}`,
-              `${opcao.nome}${opcao.unidade ? ` (${opcao.unidade})` : ''}`,
+              escapeHtml(`${opcao.nome}${opcao.unidade ? ` (${opcao.unidade})` : ''}`),
               opcao.tipo === 'numero' ? 'number' : 'text'
             )).join('')}</div>`
           : ''}
@@ -72,7 +73,7 @@ function renderItem(item, index){
             ${pointOptions.length
               ? `<div class="dynamic-fields">${pointOptions.map((opcao, optionIndex) => fieldHtml(
                   `${pointPrefix}_opcao_${optionIndex}`,
-                  `${opcao.nome}${opcao.unidade ? ` (${opcao.unidade})` : ''}`,
+                  escapeHtml(`${opcao.nome}${opcao.unidade ? ` (${opcao.unidade})` : ''}`),
                   opcao.tipo === 'numero' ? 'number' : 'text'
                 )).join('')}</div>`
               : renderPointFields(pointPrefix)}
@@ -196,12 +197,12 @@ function saveDraft(form, draftKey){
 
 async function init(){
   const token = localStorage.getItem(ROUND_TOKEN_KEY);
-  if(!token){ window.location.replace('/login.html'); return; }
+  if(!token){ window.location.replace('/login'); return; }
   prepareLogoForPdf();
   document.getElementById('clientName').textContent = `Olá, ${localStorage.getItem('client_nome') || ''}`;
 
   const rodadaId = new URLSearchParams(window.location.search).get('rodadaId');
-  if(!rodadaId){ window.location.replace('/rodadas.html'); return; }
+  if(!rodadaId){ window.location.replace('/resultados'); return; }
 
   try{
     const resp = await fetch('/api/client/rodadas', { headers:{ 'x-client-token': token } });
@@ -209,6 +210,13 @@ async function init(){
     if(!resp.ok || !data.ok) throw new Error(data.error || 'Não foi possível carregar a rodada.');
     const rodada = (data.rodadas || []).find(item => String(item._id) === rodadaId);
     if(!rodada) throw new Error('Esta rodada não está disponível para o seu laboratório.');
+
+    if(rodada.finalizada){
+      document.getElementById('dynamic-form-wrap').hidden = true;
+      document.getElementById('finalizedNoticeTitle').textContent = `Ensaio finalizado: ${rodada.nome}`;
+      document.getElementById('finalizedNotice').hidden = false;
+      return;
+    }
 
     document.getElementById('rodadaNome').textContent = rodada.nome;
     document.getElementById('codigo').value = makeCode();

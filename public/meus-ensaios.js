@@ -10,12 +10,12 @@ function logoutClient(){
   if (token) {
     fetch('/api/client/logout', { method:'POST', headers:{ 'x-client-token': token } }).catch(() => {});
   }
-  window.location.replace('login.html');
+  window.location.replace('/login');
 }
 
 async function verifyClientSession(){
   const token = getClientToken();
-  if (!token) { window.location.replace('login.html'); return; }
+  if (!token) { window.location.replace('/login'); return; }
 
   try{
     const resp = await fetch('/api/client/me', { headers: { 'x-client-token': token } });
@@ -23,7 +23,7 @@ async function verifyClientSession(){
     if (!resp.ok || !data.ok || data.mustChangePassword) {
       localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(NOME_KEY);
-      window.location.replace('login.html');
+      window.location.replace('/login');
       return;
     }
     localStorage.setItem(NOME_KEY, data.nome);
@@ -31,7 +31,7 @@ async function verifyClientSession(){
     if (nameEl) nameEl.textContent = `Olá, ${data.nome}`;
     loadSubmissions();
   }catch(e){
-    window.location.replace('login.html');
+    window.location.replace('/login');
   }
 }
 function openModal(id){ document.getElementById(id).classList.add('show'); }
@@ -64,7 +64,7 @@ async function loadSubmissions(){
     if (resp.status === 401) {
       localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(NOME_KEY);
-      window.location.replace('login.html');
+      window.location.replace('/login');
       return;
     }
     if(!resp.ok || !data.ok){

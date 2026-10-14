@@ -9,8 +9,8 @@
     content="A JGS Proficiência oferece ensaios de proficiência e comparações interlaboratoriais para laboratórios de calibração e ensaio, conforme as normas ISO/IEC 17043 e ISO/IEC 17025.">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://jgsproficiencia.com.br/">
-  <link rel="icon" href="./favicon.ico?v=999" type="image/png">
-  <link rel="stylesheet" href="/site.css" />
+  <link rel="icon" href="./favicon.ico" type="image/png">
+  <link rel="stylesheet" href="/site.css?v=2" />
   <meta property="og:title" content="JGS Proficiência">
   <meta property="og:description"
     content="Ensaios de proficiência e comparações interlaboratoriais para laboratórios de calibração e ensaio.">
@@ -166,6 +166,14 @@
     <div id="rodadasContainer" class="rodadas-container" hidden></div>
   </section>
 
+  <section id="realizados" class="realizados-section" hidden>
+    <div class="realizados-container">
+      <span class="badge">Histórico de ensaios</span>
+      <h2>Ensaios Já Realizados</h2>
+      <div id="realizadosContainer" class="grid-3"></div>
+    </div>
+  </section>
+
   <section id="participar" class="consulting">
     <div class="grid-2">
       <div>
@@ -255,6 +263,7 @@
         <h3>Navegação</h3>
 
         <a href="#programas">Programas de proficiência</a>
+        <a href="#realizados">Ensaios já realizados</a>
         <a href="#participar">Como funciona</a>
         <a href="/login">Enviar resultados</a>
         <a href="#sobrenos">Sobre nós</a>
@@ -308,7 +317,7 @@
     </div>
   </footer>
 
-  <script src="/rodada.js?v=3"></script>
+  <script src="/rodada.js?v=4"></script>
   <script>
     const menuToggle = document.querySelector('.mobile-menu-toggle');
     const mainNav = document.querySelector('.main-nav');

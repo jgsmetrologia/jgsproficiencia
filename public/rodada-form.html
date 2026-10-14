@@ -8,19 +8,26 @@
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
-  <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="rodada-client.css?v=2">
+  <link rel="stylesheet" href="styles.css?v=3">
+  <link rel="stylesheet" href="rodada-client.css?v=5">
 </head>
 <body>
   <img src="/logo.png" id="logoForPdf" alt="" style="display:none" crossorigin="anonymous">
   <div class="client-bar">
     <span id="clientName">Olá</span>
-    <a href="/rodadas.html" class="meus-ensaios-link">Trocar rodada</a>
-    <a href="/meus-ensaios.html" class="meus-ensaios-link">Meus ensaios</a>
+    <a href="/resultados" class="meus-ensaios-link">Trocar rodada</a>
+    <a href="/meus-ensaios" class="meus-ensaios-link">Meus ensaios</a>
     <button type="button" id="logoutBtn">Sair</button>
   </div>
 
-  <main class="dynamic-form-wrap">
+  <main id="finalizedNotice" class="finalized-notice" hidden>
+    <span class="badge badge-alt">Ensaio finalizado</span>
+    <h1 id="finalizedNoticeTitle">Este ensaio foi finalizado</h1>
+    <p>Este ensaio não aceita novos envios. Consulte os resultados publicados na área de rodadas.</p>
+    <a href="/resultados">Ver resultados das rodadas</a>
+  </main>
+
+  <main id="dynamic-form-wrap" class="dynamic-form-wrap">
     <header class="dynamic-form-header">
       <span class="badge">Formulário da rodada</span>
       <h1 id="rodadaNome">Carregando...</h1>
@@ -43,11 +50,11 @@
     <section id="successBox" class="dynamic-success" hidden>
       <h2>Resultados enviados</h2>
       <p>O envio foi registrado com sucesso. Código: <strong id="successCode"></strong></p>
-      <a class="secondary" href="/rodadas.html">Voltar às rodadas</a>
+      <a class="secondary" href="/resultados">Voltar às rodadas</a>
     </section>
   </main>
 
   <script src="pdf-utils.js"></script>
-  <script src="rodada-form.js?v=11"></script>
+  <script src="rodada-form.js?v=13"></script>
 </body>
 </html>

@@ -721,6 +721,30 @@ section {
   margin: 0 0 calc(var(--spacing-unit) * 4);
 }
 
+.realizados-section[hidden] {
+  display: none;
+}
+
+.realizados-container {
+  max-width: var(--max-width);
+  margin: 0 auto;
+}
+
+.realizados-container > h2 {
+  margin: 0 0 calc(var(--spacing-unit) * 4);
+}
+
+.realizado-card .badge {
+  margin-bottom: calc(var(--spacing-unit) * 1.5);
+}
+
+.realizado-card .realizado-date {
+  margin-top: calc(var(--spacing-unit) * 2);
+  color: var(--color-primary-dark);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
 /* ===== COMO PARTICIPAR (ACCORDION) ===== */
 .consulting {
   background: var(--color-surface);

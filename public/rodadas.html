@@ -6,27 +6,37 @@
   <title>Minhas rodadas — Ensaio de Proficiência</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="rodada-client.css">
+  <link rel="stylesheet" href="styles.css?v=3">
+  <link rel="stylesheet" href="rodada-client.css?v=5">
 </head>
 <body>
   <div class="client-bar">
     <span id="clientName">Olá</span>
-    <a href="meus-ensaios.html" class="meus-ensaios-link">Meus ensaios</a>
+    <a href="/meus-ensaios" class="meus-ensaios-link">Meus ensaios</a>
     <button type="button" id="logoutBtn">Sair</button>
   </div>
 
   <main class="client-choice-wrap">
     <header class="client-choice-header">
       <span class="client-choice-kicker">Área do cliente</span>
-      <h1>Escolha a rodada</h1>
-      <p>Selecione a rodada para a qual deseja enviar seus resultados.</p>
+      <h1>Suas rodadas</h1>
+      <p>Acesse ensaios em andamento ou consulte os resultados publicados.</p>
     </header>
-    <div id="rodadasList" class="client-rounds-grid"></div>
-    <p id="rodadasEmpty" class="client-empty" hidden>Nenhuma rodada ativa foi atribuída ao seu laboratório.</p>
+    <div class="round-view-tabs" role="tablist" aria-label="Suas rodadas">
+      <button type="button" id="showOngoingBtn" class="active" role="tab" aria-selected="true">Em andamento</button>
+      <button type="button" id="showResultsBtn" role="tab" aria-selected="false">Finalizados</button>
+    </div>
+    <section id="ongoingPanel" class="round-panel" role="tabpanel">
+      <div id="rodadasList" class="client-rounds-grid"></div>
+      <p id="rodadasEmpty" class="client-empty" hidden>Nenhuma rodada em andamento foi atribuída ao seu laboratório.</p>
+    </section>
+    <section id="resultsPanel" class="round-panel" role="tabpanel" hidden>
+      <div id="resultRodadasList" class="client-rounds-grid"></div>
+      <p id="resultsEmpty" class="client-empty" hidden>Nenhuma rodada finalizada foi atribuída ao seu laboratório.</p>
+    </section>
     <p id="rodadasError" class="error-msg"></p>
   </main>
 
-  <script src="rodadas-client.js"></script>
+  <script src="rodadas-client.js?v=4"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@ const path = require("path");
 const crypto = require("crypto");
 const express = require("express");
 const bcrypt = require("bcryptjs");
-const { MongoClient, ObjectId } = require("mongodb");
+const { MongoClient, ObjectId, GridFSBucket } = require("mongodb");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -37,6 +37,39 @@ async function connectToMongo() {
 }
 
 app.use(express.json({ limit: "2mb" }));
+const pdfUploadParser = express.raw({ type: "application/pdf", limit: "15mb" });
+function parsePdfUpload(req, res, next) {
+  pdfUploadParser(req, res, (err) => {
+    if (err) {
+      console.error("Erro ao receber PDF da rodada:", err);
+      return res.status(err.status === 413 ? 413 : 400).json({
+        ok: false,
+        error: err.status === 413
+          ? "O PDF deve ter no máximo 15 MB."
+          : "Não foi possível receber o arquivo PDF.",
+      });
+    }
+    next();
+  });
+}
+
+function sanitizePdfFilename(value) {
+  const basename = path.basename(String(value || "").replace(/\\/g, "/"));
+  let filename = basename
+    .replace(/[^A-Za-z0-9._-]/g, "_")
+    .replace(/^\.+/, "")
+    .slice(0, 120);
+  if (!filename || filename === ".") filename = "resultados.pdf";
+  if (!filename.toLowerCase().endsWith(".pdf")) filename += ".pdf";
+  return filename;
+}
+
+async function deleteGridFsFile(bucket, fileId) {
+  if (!fileId || !ObjectId.isValid(String(fileId))) return;
+  const objectId = new ObjectId(String(fileId));
+  const files = await bucket.find({ _id: objectId }).limit(1).toArray();
+  if (files.length) await bucket.delete(objectId);
+}
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
@@ -45,6 +78,15 @@ app.get("/site", (req, res) => {
 });
 app.get("/login", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
+});
+app.get("/resultados", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "rodadas.html"));
+});
+app.get("/meus-ensaios", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "meus-ensaios.html"));
+});
+app.get("/ensaio", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "rodada-form.html"));
 });
 app.get("/public/login.html", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
@@ -153,7 +195,8 @@ function parseRodadaIds(idsRaw) {
 
   return idsRaw
     .map((id) => String(id || "").trim())
-    .filter((id) => ObjectId.isValid(id));
+    .filter((id) => ObjectId.isValid(id))
+    .map((id) => id.toLowerCase());
 }
 
 async function requireClient(req, res, next) {
@@ -382,22 +425,33 @@ app.post("/api/save-results", requireClient, async (req, res) => {
       if (!ObjectId.isValid(requestedRodadaId)) {
         return res.status(400).json({ ok: false, error: "Rodada inválida." });
       }
+      const normalizedRodadaId = requestedRodadaId.toLowerCase();
 
       const database = await connectToMongo();
       const rodada = await database.collection("rodadas").findOne({
-        _id: new ObjectId(requestedRodadaId),
-        ativo: true,
+        _id: new ObjectId(normalizedRodadaId),
       });
 
       if (!rodada) {
         return res.status(404).json({ ok: false, error: "Rodada não encontrada ou inativa." });
       }
 
-      if (Array.isArray(req.client.rodadaIds) && !req.client.rodadaIds.includes(requestedRodadaId)) {
+      if (Array.isArray(req.client.rodadaIds) && !req.client.rodadaIds.includes(normalizedRodadaId)) {
         return res.status(403).json({ ok: false, error: "Você não está inscrito nesta rodada." });
       }
 
-      doc.rodadaId = requestedRodadaId;
+      if (rodada.finalizada === true) {
+        return res.status(403).json({
+          ok: false,
+          error: "Este ensaio já foi finalizado e não aceita novos envios.",
+        });
+      }
+
+      if (rodada.ativo !== true) {
+        return res.status(404).json({ ok: false, error: "Rodada não encontrada ou inativa." });
+      }
+
+      doc.rodadaId = normalizedRodadaId;
       doc.rodadaNome = rodada.nome;
     }
 
@@ -438,7 +492,10 @@ app.get("/api/rodadas", async (req, res) => {
 
     const docs = await database
       .collection("rodadas")
-      .find({ ativo: true })
+      .find(
+        { ativo: true, finalizada: { $ne: true } },
+        { projection: { resultadoPdf: 0 } }
+      )
       .sort({ createdAt: 1 })
       .toArray();
 
@@ -456,14 +513,44 @@ app.get("/api/rodadas", async (req, res) => {
   }
 });
 
+app.get("/api/rodadas/finalizadas", async (req, res) => {
+  try {
+    const database = await connectToMongo();
+    const docs = await database.collection("rodadas")
+      .find(
+        { finalizada: true },
+        { projection: { _id: 0, nome: 1, "itens.titulo": 1, finalizadaEm: 1 } }
+      )
+      .sort({ finalizadaEm: -1 })
+      .toArray();
+
+    res.status(200).json({
+      ok: true,
+      rodadas: docs.map((rodada) => ({
+        nome: rodada.nome,
+        itens: (rodada.itens || []).map((item) => item.titulo),
+        finalizadaEm: rodada.finalizadaEm || null,
+      })),
+    });
+  } catch (err) {
+    console.error("Erro ao buscar as rodadas finalizadas:", err);
+    res.status(500).json({
+      ok: false,
+      error: "Erro interno ao buscar os ensaios realizados.",
+    });
+  }
+});
+
 app.get("/api/client/rodadas", requireClient, async (req, res) => {
   try {
     const database = await connectToMongo();
-    const filter = { ativo: true };
     const assignedIds = Array.isArray(req.client.rodadaIds)
       ? parseRodadaIds(req.client.rodadaIds)
       : [];
-    filter._id = { $in: assignedIds.map((id) => new ObjectId(id)) };
+    const filter = {
+      _id: { $in: assignedIds.map((id) => new ObjectId(id)) },
+      $or: [{ ativo: true }, { finalizada: true }],
+    };
 
     const docs = await database
       .collection("rodadas")
@@ -471,10 +558,75 @@ app.get("/api/client/rodadas", requireClient, async (req, res) => {
       .sort({ createdAt: 1 })
       .toArray();
 
-    res.status(200).json({ ok: true, rodadas: docs });
+    res.status(200).json({
+      ok: true,
+      rodadas: docs.map((rodada) => ({
+        _id: rodada._id,
+        nome: rodada.nome,
+        descricaoCta: rodada.descricaoCta,
+        itens: rodada.itens || [],
+        ativo: rodada.ativo,
+        finalizada: rodada.finalizada === true,
+        finalizadaEm: rodada.finalizadaEm || null,
+        temResultado: !!(rodada.resultadoPdf && rodada.resultadoPdf.fileId),
+      })),
+    });
   } catch (err) {
     console.error("Erro ao buscar rodadas do cliente:", err);
     res.status(500).json({ ok: false, error: "Erro interno ao buscar suas rodadas." });
+  }
+});
+
+app.get("/api/client/rodadas/:id/resultado", requireClient, async (req, res) => {
+  try {
+    const rodadaId = req.params.id.toLowerCase();
+    if (!ObjectId.isValid(rodadaId)) {
+      return res.status(400).json({ ok: false, error: "ID de rodada inválido." });
+    }
+
+    const assignedIds = Array.isArray(req.client.rodadaIds)
+      ? parseRodadaIds(req.client.rodadaIds)
+      : [];
+    if (!assignedIds.includes(rodadaId)) {
+      return res.status(403).json({ ok: false, error: "Você não está inscrito nesta rodada." });
+    }
+
+    const database = await connectToMongo();
+    const rodada = await database.collection("rodadas").findOne({
+      _id: new ObjectId(rodadaId),
+    });
+    if (!rodada) {
+      return res.status(404).json({ ok: false, error: "Rodada não encontrada." });
+    }
+    if (rodada.finalizada !== true) {
+      return res.status(403).json({ ok: false, error: "O resultado estará disponível após a finalização do ensaio." });
+    }
+    if (!rodada.resultadoPdf || !rodada.resultadoPdf.fileId) {
+      return res.status(404).json({ ok: false, error: "O PDF de resultados ainda não foi publicado." });
+    }
+
+    const bucket = new GridFSBucket(database, { bucketName: "resultados" });
+    const fileId = new ObjectId(String(rodada.resultadoPdf.fileId));
+    const files = await bucket.find({ _id: fileId }).limit(1).toArray();
+    if (!files.length) {
+      return res.status(404).json({ ok: false, error: "Arquivo de resultados não encontrado." });
+    }
+
+    const filename = sanitizePdfFilename(rodada.resultadoPdf.nome);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
+    const downloadStream = bucket.openDownloadStream(fileId);
+    downloadStream.on("error", (err) => {
+      console.error("Erro ao transmitir PDF de resultados ao cliente:", err);
+      if (res.headersSent) res.destroy(err);
+      else res.status(500).json({ ok: false, error: "Erro ao transmitir o PDF de resultados." });
+    });
+    downloadStream.pipe(res);
+  } catch (err) {
+    console.error("Erro ao buscar PDF de resultados do cliente:", err);
+    if (!res.headersSent) {
+      res.status(500).json({ ok: false, error: "Erro interno ao buscar o PDF de resultados." });
+    }
   }
 });
 
@@ -1002,6 +1154,8 @@ app.post("/api/admin/rodadas", requireAdmin, async (req, res) => {
       descricaoCta,
       itens,
       ativo,
+      finalizada: false,
+      finalizadaEm: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -1024,16 +1178,13 @@ app.post("/api/admin/rodadas", requireAdmin, async (req, res) => {
 
 app.put("/api/admin/rodadas/:id", requireAdmin, async (req, res) => {
   try {
-    let objectId;
-
-    try {
-      objectId = new ObjectId(req.params.id);
-    } catch (e) {
+    if (!ObjectId.isValid(req.params.id)) {
       return res.status(400).json({
         ok: false,
         error: "ID de rodada inválido.",
       });
     }
+    const objectId = new ObjectId(req.params.id);
 
     const database = await connectToMongo();
 
@@ -1071,6 +1222,13 @@ app.put("/api/admin/rodadas/:id", requireAdmin, async (req, res) => {
       update.ativo = req.body.ativo;
     }
 
+    if (typeof req.body.finalizada === "boolean") {
+      update.finalizada = req.body.finalizada;
+      update.finalizadaEm = req.body.finalizada
+        ? existing.finalizadaEm || new Date()
+        : null;
+    }
+
     if (Array.isArray(req.body.itens)) {
       const itens = parseRodadaItens(req.body.itens);
 
@@ -1106,13 +1264,153 @@ app.put("/api/admin/rodadas/:id", requireAdmin, async (req, res) => {
   }
 });
 
+app.post(
+  "/api/admin/rodadas/:id/resultado",
+  requireAdmin,
+  parsePdfUpload,
+  async (req, res) => {
+    try {
+      const rodadaId = req.params.id;
+      if (!ObjectId.isValid(rodadaId)) {
+        return res.status(400).json({ ok: false, error: "ID de rodada inválido." });
+      }
+
+      const contentType = String(req.headers["content-type"] || "")
+        .split(";")[0]
+        .trim()
+        .toLowerCase();
+      if (contentType !== "application/pdf") {
+        return res.status(415).json({ ok: false, error: "Envie um arquivo com Content-Type application/pdf." });
+      }
+      if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+        return res.status(400).json({ ok: false, error: "O arquivo PDF está vazio ou não foi enviado." });
+      }
+      if (req.body.length > 15 * 1024 * 1024) {
+        return res.status(413).json({ ok: false, error: "O PDF deve ter no máximo 15 MB." });
+      }
+      if (req.body.subarray(0, 5).toString("ascii") !== "%PDF-") {
+        return res.status(400).json({ ok: false, error: "O arquivo enviado não é um PDF válido." });
+      }
+
+      const database = await connectToMongo();
+      const objectId = new ObjectId(rodadaId);
+      const collection = database.collection("rodadas");
+      const rodada = await collection.findOne({ _id: objectId });
+      if (!rodada) {
+        return res.status(404).json({ ok: false, error: "Rodada não encontrada." });
+      }
+
+      const filename = sanitizePdfFilename(req.headers["x-filename"]);
+      const bucket = new GridFSBucket(database, { bucketName: "resultados" });
+      const uploadStream = bucket.openUploadStream(filename, {
+        metadata: { rodadaId: objectId },
+      });
+      const uploaded = new Promise((resolve, reject) => {
+        uploadStream.once("error", reject);
+        uploadStream.once("finish", resolve);
+      });
+      uploadStream.end(req.body);
+      await uploaded;
+
+      const resultadoPdf = {
+        fileId: uploadStream.id,
+        nome: filename,
+        tamanho: req.body.length,
+        enviadoEm: new Date(),
+      };
+      await collection.updateOne(
+        { _id: objectId },
+        { $set: { resultadoPdf, updatedAt: new Date() } }
+      );
+
+      if (rodada.resultadoPdf && rodada.resultadoPdf.fileId) {
+        await deleteGridFsFile(bucket, rodada.resultadoPdf.fileId);
+      }
+
+      return res.status(200).json({ ok: true, resultadoPdf: {
+        nome: resultadoPdf.nome,
+        tamanho: resultadoPdf.tamanho,
+        enviadoEm: resultadoPdf.enviadoEm,
+      } });
+    } catch (err) {
+      console.error("Erro ao enviar PDF de resultados da rodada:", err);
+      return res.status(500).json({ ok: false, error: "Erro interno ao enviar o PDF de resultados." });
+    }
+  }
+);
+
+app.delete("/api/admin/rodadas/:id/resultado", requireAdmin, async (req, res) => {
+  try {
+    const rodadaId = req.params.id;
+    if (!ObjectId.isValid(rodadaId)) {
+      return res.status(400).json({ ok: false, error: "ID de rodada inválido." });
+    }
+    const database = await connectToMongo();
+    const collection = database.collection("rodadas");
+    const objectId = new ObjectId(rodadaId);
+    const rodada = await collection.findOne({ _id: objectId });
+    if (!rodada) {
+      return res.status(404).json({ ok: false, error: "Rodada não encontrada." });
+    }
+    if (rodada.resultadoPdf && rodada.resultadoPdf.fileId) {
+      const bucket = new GridFSBucket(database, { bucketName: "resultados" });
+      await deleteGridFsFile(bucket, rodada.resultadoPdf.fileId);
+    }
+    await collection.updateOne(
+      { _id: objectId },
+      { $unset: { resultadoPdf: "" }, $set: { updatedAt: new Date() } }
+    );
+    return res.status(200).json({ ok: true });
+  } catch (err) {
+    console.error("Erro ao remover PDF de resultados da rodada:", err);
+    return res.status(500).json({ ok: false, error: "Erro interno ao remover o PDF de resultados." });
+  }
+});
+
+app.get("/api/admin/rodadas/:id/resultado", requireAdmin, async (req, res) => {
+  try {
+    const rodadaId = req.params.id;
+    if (!ObjectId.isValid(rodadaId)) {
+      return res.status(400).json({ ok: false, error: "ID de rodada inválido." });
+    }
+    const database = await connectToMongo();
+    const rodada = await database.collection("rodadas").findOne({
+      _id: new ObjectId(rodadaId),
+    });
+    if (!rodada) {
+      return res.status(404).json({ ok: false, error: "Rodada não encontrada." });
+    }
+    if (!rodada.resultadoPdf || !rodada.resultadoPdf.fileId) {
+      return res.status(404).json({ ok: false, error: "Esta rodada ainda não possui PDF de resultados." });
+    }
+
+    const bucket = new GridFSBucket(database, { bucketName: "resultados" });
+    const fileId = new ObjectId(String(rodada.resultadoPdf.fileId));
+    const files = await bucket.find({ _id: fileId }).limit(1).toArray();
+    if (!files.length) {
+      return res.status(404).json({ ok: false, error: "Arquivo de resultados não encontrado." });
+    }
+    const filename = sanitizePdfFilename(rodada.resultadoPdf.nome);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
+    const downloadStream = bucket.openDownloadStream(fileId);
+    downloadStream.on("error", (err) => {
+      console.error("Erro ao transmitir PDF de resultados ao admin:", err);
+      if (res.headersSent) res.destroy(err);
+      else res.status(500).json({ ok: false, error: "Erro ao transmitir o PDF de resultados." });
+    });
+    downloadStream.pipe(res);
+  } catch (err) {
+    console.error("Erro ao buscar PDF de resultados da rodada (admin):", err);
+    if (!res.headersSent) {
+      res.status(500).json({ ok: false, error: "Erro interno ao buscar o PDF de resultados." });
+    }
+  }
+});
+
 app.delete("/api/admin/rodadas/:id", requireAdmin, async (req, res) => {
   try {
-    let objectId;
-
-    try {
-      objectId = new ObjectId(req.params.id);
-    } catch (e) {
+    if (!ObjectId.isValid(req.params.id)) {
       return res.status(400).json({
         ok: false,
         error: "ID de rodada inválido.",
@@ -1120,6 +1418,18 @@ app.delete("/api/admin/rodadas/:id", requireAdmin, async (req, res) => {
     }
 
     const database = await connectToMongo();
+    const objectId = new ObjectId(req.params.id);
+    const rodada = await database.collection("rodadas").findOne({ _id: objectId });
+    if (!rodada) {
+      return res.status(404).json({
+        ok: false,
+        error: "Rodada não encontrada.",
+      });
+    }
+    if (rodada.resultadoPdf && rodada.resultadoPdf.fileId) {
+      const bucket = new GridFSBucket(database, { bucketName: "resultados" });
+      await deleteGridFsFile(bucket, rodada.resultadoPdf.fileId);
+    }
 
     const result = await database
       .collection("rodadas")

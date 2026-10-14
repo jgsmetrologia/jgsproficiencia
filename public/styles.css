@@ -754,10 +754,10 @@
 
   /* ---------- Barra do cliente logado ---------- */
   .client-bar {
-    position: fixed;
-    top: 16px;
-    left: 16px;
-    z-index: 30;
+    position: static;
+    width: fit-content;
+    max-width: calc(100% - 32px);
+    margin: 16px auto 0;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -803,8 +803,12 @@
   @media (max-width:640px) {
     .client-bar {
       position: static;
-      margin: 0 auto 14px;
-      width: max-content;
+      width: auto;
+      max-width: calc(100% - 16px);
+      margin: 8px auto 0;
+      justify-content: center;
+      flex-wrap: wrap;
+      background: rgba(13, 23, 21, 0.98);
     }
   }
 
@@ -812,7 +816,7 @@
   .meus-ensaios-wrap {
     max-width: 1100px;
     margin: 0 auto;
-    padding: 56px 24px 80px;
+    padding: 32px 24px 80px;
 
   }
 

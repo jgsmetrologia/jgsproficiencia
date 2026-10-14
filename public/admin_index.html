@@ -10,7 +10,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="/styles.css">
-<link rel="stylesheet" href="admin-styles.css">
+<link rel="stylesheet" href="admin-styles.css?v=5">
 </head>
 <body>
 
@@ -170,7 +170,8 @@
               <th>Itens</th>
               <th>Status</th>
               <th>Criada em</th>
-              <th></th>
+              <th>PDF de resultados</th>
+              <th>Ações</th>
             </tr>
           </thead>
           <tbody id="rodadasTableBody"></tbody>
@@ -213,7 +214,26 @@
   </div>
 </div>
 
+<div class="modal-backdrop confirm-modal-backdrop" id="confirmDeleteModal">
+  <section class="modal-box confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle" aria-describedby="confirmModalMessage confirmModalInstruction confirmModalError">
+    <button type="button" class="modal-close" id="confirmModalClose" aria-label="Fechar">&times;</button>
+    <div class="confirm-modal-icon" aria-hidden="true">!</div>
+    <h2 id="confirmModalTitle">Confirmar ação</h2>
+    <p class="modal-sub" id="confirmModalMessage"></p>
+    <div id="confirmModalExtra" class="confirm-modal-extra" hidden></div>
+    <div id="confirmModalTextWrap" class="confirm-modal-text-wrap" hidden>
+      <label id="confirmModalInstruction" for="confirmModalInput"></label>
+      <input type="text" id="confirmModalInput" autocomplete="off" spellcheck="false">
+    </div>
+    <p id="confirmModalError" class="confirm-modal-error" role="alert" hidden></p>
+    <div class="confirm-modal-actions">
+      <button type="button" class="secondary" id="confirmModalCancel">Cancelar</button>
+      <button type="button" class="primary" id="confirmModalAccept">Confirmar</button>
+    </div>
+  </section>
+</div>
+
 <script src="pdf-utils.js"></script>
-<script src="admin.js?v=9"></script>
+<script src="admin.js?v=15"></script>
 </body>
 </html>

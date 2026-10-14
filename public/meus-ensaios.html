@@ -6,14 +6,14 @@
 <title>Meus ensaios — Ensaio de Proficiência</title>
 <script>
   if(!localStorage.getItem('client_token')){
-    window.location.replace('login.html');
+    window.location.replace('/login');
   }
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=3">
 </head>
 <body>
 
@@ -21,7 +21,7 @@
 
 <div class="client-bar" id="clientBar">
   <span id="clientBarName">Olá</span>
-  <a href="/formulario" class="meus-ensaios-link">Novo envio</a>
+  <a href="/resultados" class="meus-ensaios-link">Novo envio</a>
   <button type="button" id="logoutBtn">Sair</button>
 </div>
 
@@ -32,7 +32,7 @@
       <h1>Meus ensaios</h1>
       <p class="hint">Resultados que você já enviou para a JGS.</p>
     </div>
-    <a href="/formulario" class="back-link">← Novo envio</a>
+    <a href="/resultados" class="back-link">← Novo envio</a>
   </header>
 
   <div class="me-toolbar">
@@ -69,6 +69,6 @@
 </div>
 
 <script src="pdf-utils.js"></script>
-<script src="meus-ensaios.js?v=2"></script>
+<script src="meus-ensaios.js?v=3"></script>
 </body>
 </html>

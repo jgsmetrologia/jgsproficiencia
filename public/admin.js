@@ -64,7 +64,196 @@ function buildXlsxWorkbook(rows, codigo, submission) {
 }
 
 function openModal(id) { document.getElementById(id).classList.add('show'); }
-function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+let activeConfirmAction = null;
+
+function finishConfirmAction(confirmed) {
+  const active = activeConfirmAction;
+  if (!active) return;
+  activeConfirmAction = null;
+  document.getElementById('confirmDeleteModal').classList.remove('show');
+  const extra = document.getElementById('confirmModalExtra');
+  extra.innerHTML = '';
+  extra.hidden = true;
+  if (active.restoreFocus && active.restoreFocus.isConnected) active.restoreFocus.focus();
+  else (active.fallbackFocus || document.getElementById('refreshBtn'))?.focus();
+  active.resolve(confirmed);
+}
+
+function closeModal(id) {
+  if (id === 'confirmDeleteModal' && activeConfirmAction) {
+    if (activeConfirmAction.loading) return;
+    finishConfirmAction(false);
+    return;
+  }
+  document.getElementById(id).classList.remove('show');
+}
+
+function confirmAction({
+  title,
+  message,
+  confirmLabel = 'Confirmar',
+  danger = false,
+  requireText = null,
+  onConfirm = null,
+  fallbackFocus = null,
+  extraHtml = '',
+  confirmEnabled = null
+}) {
+  if (activeConfirmAction) return Promise.resolve(false);
+
+  const modal = document.getElementById('confirmDeleteModal');
+  const titleElement = document.getElementById('confirmModalTitle');
+  const messageElement = document.getElementById('confirmModalMessage');
+  const extra = document.getElementById('confirmModalExtra');
+  const textWrap = document.getElementById('confirmModalTextWrap');
+  const instruction = document.getElementById('confirmModalInstruction');
+  const input = document.getElementById('confirmModalInput');
+  const error = document.getElementById('confirmModalError');
+  const cancelButton = document.getElementById('confirmModalCancel');
+  const acceptButton = document.getElementById('confirmModalAccept');
+
+  titleElement.textContent = title;
+  messageElement.textContent = message;
+  extra.innerHTML = extraHtml;
+  extra.hidden = !extraHtml;
+  textWrap.hidden = requireText === null;
+  input.value = '';
+  input.required = requireText !== null;
+  if (requireText !== null) {
+    instruction.innerHTML = `para excluir digite "<strong>${escapeHtmlAdmin(requireText)}</strong>" como confirmação`;
+  } else {
+    instruction.textContent = '';
+  }
+  error.textContent = '';
+  error.hidden = true;
+  acceptButton.textContent = confirmLabel;
+  acceptButton.classList.toggle('danger', danger);
+  acceptButton.classList.toggle('primary', !danger);
+  acceptButton.disabled = requireText !== null || (confirmEnabled !== null && !confirmEnabled());
+  cancelButton.disabled = false;
+
+  return new Promise(resolve => {
+    activeConfirmAction = {
+      resolve,
+      restoreFocus: document.activeElement,
+      loading: false,
+      requireText,
+      onConfirm,
+      danger,
+      fallbackFocus,
+      confirmEnabled
+    };
+    input.disabled = false;
+    modal.classList.add('show');
+    if (requireText !== null) input.focus();
+    else if (acceptButton.disabled) {
+      (extra.querySelector('[tabindex="0"]') || cancelButton).focus();
+    } else acceptButton.focus();
+  });
+}
+
+async function submitConfirmAction() {
+  const active = activeConfirmAction;
+  if (!active || active.loading) return;
+
+  const input = document.getElementById('confirmModalInput');
+  if (active.requireText !== null && input.value.trim() !== active.requireText.trim()) return;
+  if (active.confirmEnabled && !active.confirmEnabled()) return;
+
+  if (!active.onConfirm) {
+    finishConfirmAction(true);
+    return;
+  }
+
+  active.loading = true;
+  const acceptButton = document.getElementById('confirmModalAccept');
+  const cancelButton = document.getElementById('confirmModalCancel');
+  const closeButton = document.getElementById('confirmModalClose');
+  const extra = document.getElementById('confirmModalExtra');
+  const error = document.getElementById('confirmModalError');
+  const originalLabel = acceptButton.textContent;
+  [acceptButton, cancelButton, closeButton, input].forEach(control => { control.disabled = true; });
+  extra.querySelectorAll('button, input').forEach(control => { control.disabled = true; });
+  const extraDropzone = extra.querySelector('[tabindex="0"]');
+  if (extraDropzone) extraDropzone.setAttribute('aria-disabled', 'true');
+  acceptButton.textContent = active.danger ? 'Excluindo...' : 'Processando...';
+  error.textContent = '';
+  error.hidden = true;
+  try {
+    await active.onConfirm();
+    finishConfirmAction(true);
+  } catch (err) {
+    error.textContent = err.message || 'Não foi possível concluir a ação.';
+    error.hidden = false;
+    active.loading = false;
+    [acceptButton, cancelButton, closeButton, input].forEach(control => { control.disabled = false; });
+    extra.querySelectorAll('button, input').forEach(control => { control.disabled = false; });
+    if (extraDropzone) extraDropzone.removeAttribute('aria-disabled');
+    acceptButton.textContent = originalLabel;
+    if (active.requireText !== null) {
+      acceptButton.disabled = active.requireText !== null
+        ? input.value.trim() !== active.requireText.trim()
+        : !!(active.confirmEnabled && !active.confirmEnabled());
+    }
+    acceptButton.focus();
+  }
+}
+
+document.getElementById('confirmModalInput').addEventListener('input', event => {
+  const active = activeConfirmAction;
+  if (!active || active.requireText === null || active.loading) return;
+  document.getElementById('confirmModalAccept').disabled =
+    event.target.value.trim() !== active.requireText.trim();
+});
+document.getElementById('confirmModalAccept').addEventListener('click', submitConfirmAction);
+document.getElementById('confirmModalCancel').addEventListener('click', () => closeModal('confirmDeleteModal'));
+document.getElementById('confirmModalClose').addEventListener('click', () => closeModal('confirmDeleteModal'));
+document.getElementById('confirmModalInput').addEventListener('keydown', event => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    if (!document.getElementById('confirmModalAccept').disabled) submitConfirmAction();
+  }
+});
+document.getElementById('confirmDeleteModal').addEventListener('click', event => {
+  if (event.target === event.currentTarget) closeModal('confirmDeleteModal');
+});
+document.addEventListener('keydown', event => {
+  if (!activeConfirmAction) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeModal('confirmDeleteModal');
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const modal = document.querySelector('#confirmDeleteModal .modal-box');
+  const focusable = Array.from(modal.querySelectorAll('button:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex="-1"])'))
+    .filter(element => !element.hidden && element.offsetParent !== null);
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (!modal.contains(document.activeElement)) {
+    event.preventDefault();
+    first.focus();
+  } else if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+});
+document.addEventListener('focusin', event => {
+  if (!activeConfirmAction) return;
+  const modal = document.querySelector('#confirmDeleteModal .modal-box');
+  if (modal.contains(event.target)) return;
+  const target = activeConfirmAction.requireText !== null
+    ? document.getElementById('confirmModalInput')
+    : activeConfirmAction.confirmEnabled && !activeConfirmAction.confirmEnabled()
+      ? document.querySelector('#confirmModalExtra [tabindex="0"]') || document.getElementById('confirmModalCancel')
+      : document.getElementById('confirmModalAccept');
+  if (!target.disabled) target.focus();
+});
 
 document.querySelectorAll('[data-close]').forEach(btn => {
   btn.addEventListener('click', () => closeModal(btn.dataset.close));
@@ -351,29 +540,24 @@ async function viewSubmission(btn) {
 
 async function deleteSubmission(btn) {
   const codigo = btn.dataset.codigo;
-  if (!confirm(`Excluir o envio "${codigo}"? Essa ação não pode ser desfeita.`)) return;
-
-  btn.disabled = true;
-  btn.textContent = 'Excluindo...';
-  try {
-    const resp = await fetch(`/api/admin/submissions/${encodeURIComponent(codigo)}`, {
-      method: 'DELETE',
-      headers: { 'x-admin-password': adminPassword }
-    });
-    const data = await resp.json();
-    if (!resp.ok || !data.ok) {
-      alert(data.error || 'Erro ao excluir o envio.');
-      btn.disabled = false;
-      btn.textContent = 'Excluir';
-      return;
+  await confirmAction({
+    title: 'Excluir envio',
+    message: 'Essa ação não pode ser desfeita.',
+    confirmLabel: 'Excluir',
+    danger: true,
+    requireText: codigo,
+    fallbackFocus: document.getElementById('refreshBtn'),
+    onConfirm: async () => {
+      const resp = await fetch(`/api/admin/submissions/${encodeURIComponent(codigo)}`, {
+        method: 'DELETE',
+        headers: { 'x-admin-password': adminPassword }
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) throw new Error(data.error || 'Erro ao excluir o envio.');
+      allSubmissions = allSubmissions.filter(s => s.codigo !== codigo);
+      renderTable(allSubmissions);
     }
-    allSubmissions = allSubmissions.filter(s => s.codigo !== codigo);
-    renderTable(allSubmissions);
-  } catch (e) {
-    alert('Erro de conexão ao excluir o envio.');
-    btn.disabled = false;
-    btn.textContent = 'Excluir';
-  }
+  });
 }
 
 document.getElementById('searchInput').addEventListener('input', (e) => {
@@ -588,30 +772,28 @@ document.getElementById('createClientBtn').addEventListener('click', async () =>
 
 async function resetClientPassword(btn) {
   const username = btn.dataset.username;
-  if (!confirm(`Gerar uma nova senha temporária para "${username}"? A sessão atual dele será encerrada.`)) return;
-
-  btn.disabled = true;
-  try {
-    const resp = await fetch(`/api/admin/clients/${encodeURIComponent(username)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'x-admin-password': adminPassword },
-      body: JSON.stringify({ resetPassword: true })
-    });
-    const data = await resp.json();
-    if (!resp.ok || !data.ok) {
-      alert(data.error || 'Erro ao resetar a senha.');
-      return;
+  let tempPassword = null;
+  const confirmed = await confirmAction({
+    title: 'Resetar senha',
+    message: `Gerar uma nova senha temporária para "${username}"? A sessão atual dele será encerrada.`,
+    confirmLabel: 'Confirmar',
+    onConfirm: async () => {
+      const resp = await fetch(`/api/admin/clients/${encodeURIComponent(username)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-admin-password': adminPassword },
+        body: JSON.stringify({ resetPassword: true })
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) throw new Error(data.error || 'Erro ao resetar a senha.');
+      tempPassword = data.tempPassword;
     }
-    setTempPwCache(username, data.tempPassword);
-    loadClients();
-    document.getElementById('tempPwTitle').textContent = `Nova senha temporária — ${username}`;
-    document.getElementById('tempPwValue').textContent = data.tempPassword;
-    openModal('tempPwModal');
-  } catch (e) {
-    alert('Erro de conexão ao resetar a senha.');
-  } finally {
-    btn.disabled = false;
-  }
+  });
+  if (!confirmed) return;
+  setTempPwCache(username, tempPassword);
+  loadClients();
+  document.getElementById('tempPwTitle').textContent = `Nova senha temporária — ${username}`;
+  document.getElementById('tempPwValue').textContent = tempPassword;
+  openModal('tempPwModal');
 }
 
 async function toggleClientActive(btn) {
@@ -641,29 +823,24 @@ async function toggleClientActive(btn) {
 
 async function deleteClient(btn) {
   const username = btn.dataset.username;
-  if (!confirm(`Excluir o cliente "${username}"? Ele perderá o acesso ao formulário. Os envios já feitos não serão apagados.`)) return;
-
-  btn.disabled = true;
-  btn.textContent = 'Excluindo...';
-  try {
-    const resp = await fetch(`/api/admin/clients/${encodeURIComponent(username)}`, {
-      method: 'DELETE',
-      headers: { 'x-admin-password': adminPassword }
-    });
-    const data = await resp.json();
-    if (!resp.ok || !data.ok) {
-      alert(data.error || 'Erro ao excluir o cliente.');
-      btn.disabled = false;
-      btn.textContent = 'Excluir';
-      return;
+  await confirmAction({
+    title: 'Excluir cliente',
+    message: 'Ele perderá o acesso ao formulário. Os envios já feitos não serão apagados.',
+    confirmLabel: 'Excluir',
+    danger: true,
+    requireText: username,
+    fallbackFocus: document.getElementById('refreshClientsBtn'),
+    onConfirm: async () => {
+      const resp = await fetch(`/api/admin/clients/${encodeURIComponent(username)}`, {
+        method: 'DELETE',
+        headers: { 'x-admin-password': adminPassword }
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) throw new Error(data.error || 'Erro ao excluir o cliente.');
+      allClients = allClients.filter(c => c.username !== username);
+      renderClientsTable(allClients);
     }
-    allClients = allClients.filter(c => c.username !== username);
-    renderClientsTable(allClients);
-  } catch (e) {
-    alert('Erro de conexão ao excluir o cliente.');
-    btn.disabled = false;
-    btn.textContent = 'Excluir';
-  }
+  });
 }
 
 document.getElementById('clientSearchInput').addEventListener('input', (e) => {
@@ -684,14 +861,21 @@ let allRodadas = [];
 let editingRodadaId = null;
 
 function escapeAttr(str) {
-  return String(str == null ? '' : str).replace(/"/g, '&quot;');
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function escapeHtmlAdmin(str) {
   return String(str == null ? '' : str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function createOptionRow(nome = '', unidade = '', tipo = 'numero', repetir = true) {
@@ -852,9 +1036,12 @@ function renderRodadasTable(list) {
 
   list.forEach(rodada => {
     const tr = document.createElement('tr');
-    const statusBadge = rodada.ativo
-      ? '<span class="badge ok">Ativa</span>'
-      : '<span class="badge off">Inativa</span>';
+    const statusBadge = rodada.finalizada
+      ? '<span class="badge warn">Finalizada</span>'
+      : rodada.ativo
+        ? '<span class="badge ok">Ativa</span>'
+        : '<span class="badge off">Inativa</span>';
+    const resultadoPdf = rodada.resultadoPdf;
     const qtdItens = (rodada.itens || []).length;
 
     tr.innerHTML = `
@@ -862,9 +1049,22 @@ function renderRodadasTable(list) {
       <td class="muted">${qtdItens} item(ns)</td>
       <td>${statusBadge}</td>
       <td class="muted">${fmtDate(rodada.createdAt)}</td>
+      <td class="rodada-pdf-cell">
+        <div class="pdf-upload-table-actions">
+          ${resultadoPdf
+            ? `<span class="badge ok">PDF enviado</span>
+               <span class="pdf-upload-current-name" title="${escapeHtmlAdmin(resultadoPdf.nome)}">${escapeHtmlAdmin(resultadoPdf.nome)}</span>
+               <button class="view-btn" data-action="preview-result" data-id="${escapeHtmlAdmin(rodada._id)}">Visualizar</button>
+               <button class="del-btn" data-action="delete-result" data-id="${escapeHtmlAdmin(rodada._id)}">Remover</button>`
+            : '<span class="badge off">Sem PDF</span>'}
+          <button class="view-btn" data-action="upload-result" data-id="${escapeHtmlAdmin(rodada._id)}">PDF</button>
+          <span class="pdf-upload-status" data-result-status="${escapeHtmlAdmin(rodada._id)}" role="status" aria-live="polite"></span>
+        </div>
+      </td>
       <td class="actions">
         <button class="view-btn" data-action="edit" data-id="${rodada._id}">Editar</button>
         <button class="view-btn" data-action="toggle" data-id="${rodada._id}" data-active="${rodada.ativo}">${rodada.ativo ? 'Desativar' : 'Ativar'}</button>
+        <button class="view-btn" data-action="finalize" data-id="${rodada._id}" data-finalizada="${!!rodada.finalizada}">${rodada.finalizada ? 'Reabrir' : 'Finalizar'}</button>
         <button class="del-btn" data-action="delete" data-id="${rodada._id}">Excluir</button>
       </td>
     `;
@@ -873,7 +1073,263 @@ function renderRodadasTable(list) {
 
   tbody.querySelectorAll('[data-action="edit"]').forEach(btn => btn.addEventListener('click', () => editRodada(btn.dataset.id)));
   tbody.querySelectorAll('[data-action="toggle"]').forEach(btn => btn.addEventListener('click', () => toggleRodadaAtiva(btn)));
+  tbody.querySelectorAll('[data-action="finalize"]').forEach(btn => btn.addEventListener('click', () => toggleRodadaFinalizada(btn)));
+  tbody.querySelectorAll('[data-action="upload-result"]').forEach(btn => btn.addEventListener('click', () => openRodadaPdfUpload(btn)));
+  tbody.querySelectorAll('[data-action="preview-result"]').forEach(btn => btn.addEventListener('click', () => previewRodadaResult(btn)));
+  tbody.querySelectorAll('[data-action="delete-result"]').forEach(btn => btn.addEventListener('click', () => deleteRodadaResult(btn)));
   tbody.querySelectorAll('[data-action="delete"]').forEach(btn => btn.addEventListener('click', () => deleteRodada(btn.dataset.id)));
+}
+
+function formatPdfSize(size) {
+  const bytes = Number(size);
+  if (!Number.isFinite(bytes) || bytes < 0) return 'Tamanho indisponível';
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function setPdfUploadStatus(id, message, state = '') {
+  const status = document.querySelector(`[data-result-status="${id}"]`);
+  if (!status) return;
+  status.textContent = message;
+  status.dataset.state = state;
+}
+
+function pdfPickerMarkup(optional = false) {
+  return `
+    <div class="pdf-upload">
+      ${optional ? '<p class="pdf-upload-optional">O PDF é opcional. Você pode finalizar sem ele e enviá-lo depois pelo botão PDF.</p>' : ''}
+      <input class="pdf-upload-input" type="file" accept="application/pdf,.pdf" aria-hidden="true" tabindex="-1" id="confirmPdfInput">
+      <div class="pdf-upload-dropzone" role="button" tabindex="0" aria-label="Selecionar PDF de resultados" id="confirmPdfDropzone">
+        <svg class="pdf-upload-icon" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <path d="M18 3H8a2 2 0 0 0-2 2v22a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V11l-8-8Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+          <path d="M18 3v8h8M16 24v-8m0 0-3 3m3-3 3 3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <strong>Arraste o PDF aqui ou <span>clique para escolher</span></strong>
+        <small>Somente PDF · até 15 MB</small>
+      </div>
+      <div class="pdf-upload-selected" id="confirmPdfSelected" hidden></div>
+      <span class="pdf-upload-status" id="confirmPdfStatus" role="status" aria-live="polite"></span>
+    </div>
+  `;
+}
+
+function bindConfirmPdfPicker(onFileChange, { selectedLabel = null, emptyLabel = null } = {}) {
+  const input = document.getElementById('confirmPdfInput');
+  const dropzone = document.getElementById('confirmPdfDropzone');
+  const selected = document.getElementById('confirmPdfSelected');
+  const status = document.getElementById('confirmPdfStatus');
+  const acceptButton = document.getElementById('confirmModalAccept');
+  const defaultLabel = emptyLabel || acceptButton.textContent;
+  let selectedFile = null;
+
+  function selectFile(file) {
+    if (!file) return;
+    const validPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+    if (!validPdf || file.size === 0 || file.size > 15 * 1024 * 1024) {
+      input.value = '';
+      selectedFile = null;
+      selected.hidden = true;
+      selected.innerHTML = '';
+      dropzone.hidden = false;
+      dropzone.classList.add('has-error');
+      status.textContent = 'Selecione um arquivo PDF válido de até 15 MB.';
+      status.dataset.state = 'error';
+      onFileChange(null);
+      acceptButton.textContent = defaultLabel;
+      if (activeConfirmAction && activeConfirmAction.confirmEnabled) acceptButton.disabled = true;
+      return;
+    }
+
+    selectedFile = file;
+    dropzone.classList.remove('has-error', 'is-dragging');
+    dropzone.hidden = true;
+    selected.hidden = false;
+    selected.innerHTML = `
+    <div class="pdf-upload-file-icon" aria-hidden="true">PDF</div>
+    <div class="pdf-upload-file-info">
+      <strong title="${escapeHtmlAdmin(file.name)}">${escapeHtmlAdmin(file.name)}</strong>
+      <span>${escapeHtmlAdmin(formatPdfSize(file.size))}</span>
+    </div>
+    <button type="button" class="pdf-upload-remove-selection" data-action="clear-result-selection" aria-label="Remover arquivo selecionado">&times;</button>
+  `;
+    status.textContent = '';
+    status.dataset.state = '';
+    onFileChange(selectedFile);
+    if (selectedLabel) acceptButton.textContent = selectedLabel;
+    if (activeConfirmAction && activeConfirmAction.confirmEnabled) acceptButton.disabled = false;
+  }
+
+  dropzone.addEventListener('click', () => {
+    if (dropzone.getAttribute('aria-disabled') !== 'true') input.click();
+  });
+  dropzone.addEventListener('keydown', event => {
+    if (dropzone.getAttribute('aria-disabled') === 'true') return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      input.click();
+    }
+  });
+  dropzone.addEventListener('dragover', event => {
+    event.preventDefault();
+    dropzone.classList.add('is-dragging');
+  });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('is-dragging'));
+  dropzone.addEventListener('drop', event => {
+    event.preventDefault();
+    dropzone.classList.remove('is-dragging');
+    selectFile(event.dataTransfer.files[0]);
+  });
+  input.addEventListener('change', () => selectFile(input.files[0]));
+  selected.addEventListener('click', event => {
+    if (!event.target.closest('[data-action="clear-result-selection"]')) return;
+    input.value = '';
+    selectedFile = null;
+    selected.hidden = true;
+    selected.innerHTML = '';
+    dropzone.hidden = false;
+    status.textContent = '';
+    status.dataset.state = '';
+    onFileChange(null);
+    acceptButton.textContent = defaultLabel;
+    if (activeConfirmAction && activeConfirmAction.confirmEnabled) acceptButton.disabled = true;
+  });
+
+  return () => selectedFile;
+}
+
+async function sendRodadaResultPdf(id, file) {
+  if (!file || !(file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) ||
+      file.size === 0 || file.size > 15 * 1024 * 1024) {
+    throw new Error('Selecione um arquivo PDF válido de até 15 MB.');
+  }
+  const resp = await fetch(`/api/admin/rodadas/${encodeURIComponent(id)}/resultado`, {
+    method: 'POST',
+    headers: {
+      'x-admin-password': adminPassword,
+      'Content-Type': 'application/pdf',
+      'x-filename': file.name.replace(/[^A-Za-z0-9._-]/g, '_')
+    },
+    body: file
+  });
+  const data = await resp.json();
+  if (!resp.ok || !data.ok) throw new Error(data.error || 'Erro ao enviar o PDF.');
+}
+
+async function openRodadaPdfUpload(btn) {
+  const id = btn.dataset.id;
+  const rodada = allRodadas.find(item => item._id === id);
+  if (!rodada) return;
+  let selectedFile = null;
+  const filename = rodada.resultadoPdf && rodada.resultadoPdf.nome;
+  const promise = confirmAction({
+    title: filename ? 'Substituir PDF de resultados' : 'Enviar PDF de resultados',
+    message: filename
+      ? `Arquivo atual: ${filename}. Selecione um novo PDF para substituí-lo.`
+      : `Selecione o PDF de resultados para "${rodada.nome}".`,
+    confirmLabel: filename ? 'Substituir PDF' : 'Enviar PDF',
+    extraHtml: pdfPickerMarkup(),
+    confirmEnabled: () => !!selectedFile,
+    fallbackFocus: document.getElementById('refreshRodadasBtn'),
+    onConfirm: async () => {
+      await sendRodadaResultPdf(id, selectedFile);
+      await loadRodadas();
+    }
+  });
+  bindConfirmPdfPicker(file => { selectedFile = file; });
+  await promise;
+}
+
+async function toggleRodadaFinalizada(btn) {
+  const id = btn.dataset.id;
+  const finalizada = btn.dataset.finalizada === 'true';
+  const rodada = allRodadas.find(item => item._id === id);
+  if (!rodada) return;
+  const nome = rodada ? rodada.nome : 'esta rodada';
+  const action = finalizada ? 'reabrir' : 'finalizar';
+  let selectedFile = null;
+  const promise = confirmAction({
+    title: finalizada ? 'Reabrir ensaio' : 'Finalizar ensaio',
+    message: finalizada
+      ? `Deseja reabrir o ensaio "${nome}"?`
+      : `Deseja finalizar o ensaio "${nome}"? Você pode enviar o PDF agora ou finalizar sem ele e publicá-lo depois pelo botão PDF.`,
+    confirmLabel: finalizada ? 'Reabrir' : 'Finalizar',
+    extraHtml: finalizada ? '' : pdfPickerMarkup(true),
+    fallbackFocus: document.getElementById('refreshRodadasBtn'),
+    onConfirm: async () => {
+      if (!finalizada && selectedFile) {
+        await sendRodadaResultPdf(id, selectedFile);
+      }
+      const resp = await fetch(`/api/admin/rodadas/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-admin-password': adminPassword },
+        body: JSON.stringify({ finalizada: !finalizada })
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) throw new Error(data.error || `Erro ao ${action} a rodada.`);
+      await loadRodadas();
+    }
+  });
+  if (!finalizada) {
+    bindConfirmPdfPicker(file => { selectedFile = file; }, {
+      selectedLabel: 'Finalizar e enviar PDF',
+      emptyLabel: 'Finalizar'
+    });
+  }
+  await promise;
+}
+
+async function previewRodadaResult(btn) {
+  const id = btn.dataset.id;
+  const previewWindow = window.open('', '_blank');
+  if (!previewWindow) {
+    setPdfUploadStatus(id, 'Permita pop-ups para visualizar o PDF.', 'error');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Abrindo...';
+  setPdfUploadStatus(id, '');
+  try {
+    const resp = await fetch(`/api/admin/rodadas/${encodeURIComponent(id)}/resultado`, {
+      headers: { 'x-admin-password': adminPassword }
+    });
+    if (!resp.ok) {
+      const data = await resp.json();
+      throw new Error(data.error || 'Erro ao visualizar o PDF.');
+    }
+    const url = URL.createObjectURL(await resp.blob());
+    previewWindow.location.href = url;
+    window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) {
+    previewWindow.close();
+    setPdfUploadStatus(id, e.message || 'Erro de conexão ao visualizar o PDF.', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Visualizar';
+  }
+}
+
+async function deleteRodadaResult(btn) {
+  const id = btn.dataset.id;
+  const rodada = allRodadas.find(item => item._id === id);
+  const filename = rodada && rodada.resultadoPdf && rodada.resultadoPdf.nome;
+  await confirmAction({
+    title: 'Remover PDF de resultados',
+    message: `O arquivo "${filename || 'PDF de resultados'}" será removido desta rodada.`,
+    confirmLabel: 'Remover',
+    danger: true,
+    requireText: filename || (rodada ? rodada.nome : 'esta rodada'),
+    fallbackFocus: document.getElementById('refreshRodadasBtn'),
+    onConfirm: async () => {
+      const resp = await fetch(`/api/admin/rodadas/${encodeURIComponent(id)}/resultado`, {
+        method: 'DELETE',
+        headers: { 'x-admin-password': adminPassword }
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) throw new Error(data.error || 'Erro ao remover o PDF.');
+      await loadRodadas();
+    }
+  });
 }
 
 function editRodada(id) {
@@ -930,23 +1386,24 @@ async function toggleRodadaAtiva(btn) {
 async function deleteRodada(id) {
   const rodada = allRodadas.find(r => r._id === id);
   const nome = rodada ? rodada.nome : 'esta rodada';
-  if (!confirm(`Excluir a rodada "${nome}"? Essa ação não pode ser desfeita.`)) return;
-
-  try {
-    const resp = await fetch(`/api/admin/rodadas/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-      headers: { 'x-admin-password': adminPassword }
-    });
-    const data = await resp.json();
-    if (!resp.ok || !data.ok) {
-      alert(data.error || 'Erro ao excluir a rodada.');
-      return;
+  await confirmAction({
+    title: 'Excluir rodada',
+    message: 'Essa ação não pode ser desfeita.',
+    confirmLabel: 'Excluir',
+    danger: true,
+    requireText: nome,
+    fallbackFocus: document.getElementById('refreshRodadasBtn'),
+    onConfirm: async () => {
+      const resp = await fetch(`/api/admin/rodadas/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: { 'x-admin-password': adminPassword }
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) throw new Error(data.error || 'Erro ao excluir a rodada.');
+      if (editingRodadaId === id) resetRodadaForm();
+      await loadRodadas();
     }
-    if (editingRodadaId === id) resetRodadaForm();
-    loadRodadas();
-  } catch (e) {
-    alert('Erro de conexão ao excluir a rodada.');
-  }
+  });
 }
 
 document.getElementById('saveRodadaBtn').addEventListener('click', async () => {

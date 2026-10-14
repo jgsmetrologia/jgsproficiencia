@@ -12,12 +12,12 @@ function logoutClient(){
   if (token) {
     fetch('/api/client/logout', { method:'POST', headers:{ 'x-client-token': token } }).catch(() => {});
   }
-  window.location.replace('login.html');
+  window.location.replace('/login');
 }
 
 async function verifyClientSession(){
   const token = getClientToken();
-  if (!token) { window.location.replace('login.html'); return; }
+  if (!token) { window.location.replace('/login'); return; }
 
   try{
     const resp = await fetch('/api/client/me', { headers: { 'x-client-token': token } });
@@ -25,7 +25,7 @@ async function verifyClientSession(){
     if (!resp.ok || !data.ok || data.mustChangePassword) {
       localStorage.removeItem(CLIENT_TOKEN_KEY);
       localStorage.removeItem(CLIENT_NOME_KEY);
-      window.location.replace('login.html');
+      window.location.replace('/login');
       return;
     }
     localStorage.setItem(CLIENT_NOME_KEY, data.nome);
@@ -36,7 +36,7 @@ async function verifyClientSession(){
     if (razaoInput) razaoInput.value = clientNome;
     updateProgress();
   }catch(e){
-    window.location.replace('login.html');
+    window.location.replace('/login');
   }
 }
 
@@ -246,7 +246,7 @@ async function saveResultsToDatabase(rows, codigo){
       if (resp.status === 401) {
         localStorage.removeItem(CLIENT_TOKEN_KEY);
         localStorage.removeItem(CLIENT_NOME_KEY);
-        window.location.replace('login.html');
+        window.location.replace('/login');
         return false;
       }
       console.error('Falha ao salvar no banco de dados:', errData.error || resp.status);

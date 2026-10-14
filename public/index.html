@@ -11,20 +11,20 @@
 <title>Envio de Resultados — Ensaio de Proficiência</title>
 <script>
   if(!localStorage.getItem('client_token')){
-    window.location.replace('login.html');
+    window.location.replace('/login');
   }
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=3">
 </head>
 <body>
 
 <div class="client-bar" id="clientBar">
   <span id="clientBarName">Olá</span>
-  <a href="meus-ensaios.html" class="meus-ensaios-link">Meus ensaios</a>
+  <a href="/meus-ensaios" class="meus-ensaios-link">Meus ensaios</a>
   <button type="button" id="logoutBtn">Sair</button>
 </div>
 
@@ -200,6 +200,6 @@
 </div>
 
 <script src="pdf-utils.js"></script>
-<script src="script.js"></script>
+<script src="script.js?v=2"></script>
 </body>
 </html>
