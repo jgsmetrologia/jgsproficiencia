@@ -760,17 +760,114 @@ app.post("/api/admin/login", (req, res) => {
   });
 });
 
+app.get("/api/admin/rodadas-resumo", requireAdmin, async (req, res) => {
+  try {
+    const database = await connectToMongo();
+    const [rodadas, counts] = await Promise.all([
+      database.collection("rodadas")
+        .find({}, { projection: { nome: 1, ativo: 1, itens: 1 } })
+        .sort({ createdAt: -1 })
+        .toArray(),
+      database.collection("submissions").aggregate([
+        {
+          $group: {
+            _id: {
+              $cond: [
+                {
+                  $in: [
+                    {
+                      $toLower: {
+                        $trim: {
+                          input: { $toString: { $ifNull: ["$rodadaId", ""] } },
+                        },
+                      },
+                    },
+                    ["", "legacy", "legado"],
+                  ],
+                },
+                "legacy",
+                { $toLower: { $toString: "$rodadaId" } },
+              ],
+            },
+            total: { $sum: 1 },
+          },
+        },
+      ]).toArray(),
+    ]);
+
+    const countByRound = new Map();
+    for (const entry of counts) {
+      const key = String(entry._id).toLowerCase();
+      countByRound.set(key, (countByRound.get(key) || 0) + entry.total);
+    }
+
+    const rodadasResumo = rodadas.map((rodada) => ({
+      ...rodada,
+      _id: String(rodada._id),
+      envios: countByRound.get(String(rodada._id).toLowerCase()) || 0,
+    }));
+    const legacyCount = countByRound.get("legacy") || 0;
+    if (legacyCount > 0) {
+      rodadasResumo.push({
+          _id: "legacy",
+          nome: "Legado",
+          ativo: false,
+          itens: [],
+          envios: legacyCount,
+      });
+    }
+
+    res.status(200).json({
+      ok: true,
+      rodadas: rodadasResumo,
+    });
+  } catch (err) {
+    console.error("Erro ao resumir as rodadas (admin):", err);
+    res.status(500).json({
+      ok: false,
+      error: "Erro interno ao carregar as rodadas.",
+    });
+  }
+});
+
 app.get(
   "/api/admin/submissions",
   requireAdmin,
   async (req, res) => {
     try {
       const database = await connectToMongo();
+      const rodadaId = String(req.query.rodada || "").trim();
+      let filter = {};
+      if (rodadaId === "legacy") {
+        filter = {
+          $or: [
+            { rodadaId: null },
+            { rodadaId: { $in: ["", "legacy", "Legacy", "LEGACY", "legado", "Legado", "LEGADO"] } },
+            { rodadaId: { $regex: "^\\s*$" } },
+          ],
+        };
+      } else if (rodadaId) {
+        if (!ObjectId.isValid(rodadaId)) {
+          return res.status(400).json({
+            ok: false,
+            error: "ID de rodada inválido.",
+          });
+        }
+        filter = {
+          rodadaId: {
+            $in: [
+              rodadaId,
+              rodadaId.toLowerCase(),
+              new ObjectId(rodadaId),
+            ],
+          },
+        };
+      }
 
       const docs = await database
         .collection("submissions")
         .find(
-          {},
+          filter,
           {
             projection: {
               codigo: 1,
@@ -797,6 +894,64 @@ app.get(
       res.status(500).json({
         ok: false,
         error: "Erro interno ao listar os envios.",
+      });
+    }
+  }
+);
+
+app.patch(
+  "/api/admin/envios/:id/rodada",
+  requireAdmin,
+  async (req, res) => {
+    try {
+      if (!ObjectId.isValid(req.params.id)) {
+        return res.status(400).json({
+          ok: false,
+          error: "ID de envio inválido.",
+        });
+      }
+
+      const rodadaId = String((req.body && req.body.rodadaId) || "").trim();
+      const database = await connectToMongo();
+      let update;
+      if (rodadaId === "legacy") {
+        update = { rodadaId: null, rodadaNome: "Legado" };
+      } else {
+        if (!ObjectId.isValid(rodadaId)) {
+          return res.status(400).json({
+            ok: false,
+            error: "Rodada de destino inválida.",
+          });
+        }
+
+        const rodada = await database.collection("rodadas").findOne({
+          _id: new ObjectId(rodadaId),
+        });
+        if (!rodada) {
+          return res.status(404).json({
+            ok: false,
+            error: "Rodada de destino não encontrada.",
+          });
+        }
+        update = { rodadaId: String(rodada._id), rodadaNome: rodada.nome };
+      }
+
+      const result = await database.collection("submissions").updateOne(
+        { _id: new ObjectId(req.params.id) },
+        { $set: update }
+      );
+      if (!result.matchedCount) {
+        return res.status(404).json({
+          ok: false,
+          error: "Envio não encontrado.",
+        });
+      }
+      res.status(200).json({ ok: true });
+    } catch (err) {
+      console.error("Erro ao mover envio para outra rodada:", err);
+      res.status(500).json({
+        ok: false,
+        error: "Erro interno ao mover o envio.",
       });
     }
   }

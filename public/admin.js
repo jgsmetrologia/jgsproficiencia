@@ -1,5 +1,10 @@
 let adminPassword = null;
 let allSubmissions = [];
+let allRoundSummaries = [];
+let currentSubmissionRoundId = null;
+let submissionToMoveId = null;
+let moveModalRestoreFocus = null;
+let toastTimer = null;
 let allClients = [];
 let clientRodadasUsername = null;
 
@@ -358,7 +363,7 @@ async function tryLogin() {
     adminPassword = pwd;
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('panelScreen').style.display = 'block';
-    loadSubmissions();
+    loadRoundSummaries();
     loadClients();
     loadRodadas();
   } catch (e) {
@@ -380,6 +385,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+    if (btn.dataset.tab === 'envios' && adminPassword) loadRoundSummaries();
   });
 });
 
@@ -391,20 +397,119 @@ function fmtDate(iso) {
 }
 
 async function loadSubmissions() {
+  if (!currentSubmissionRoundId) return;
+  const errorBox = document.getElementById('submissionsError');
+  errorBox.textContent = '';
   try {
-    const resp = await fetch('/api/admin/submissions', {
+    const resp = await fetch(`/api/admin/submissions?rodada=${encodeURIComponent(currentSubmissionRoundId)}`, {
       headers: { 'x-admin-password': adminPassword }
     });
     const data = await resp.json();
     if (!resp.ok || !data.ok) {
-      alert(data.error || 'Erro ao carregar os dados.');
-      return;
+      throw new Error(data.error || 'Não foi possível carregar os envios desta rodada.');
     }
     allSubmissions = data.submissions || [];
-    renderTable(allSubmissions);
-  } catch (e) {
-    alert('Erro de conexão ao carregar os dados.');
+    renderFilteredSubmissions();
+    return true;
+  } catch (error) {
+    allSubmissions = [];
+    renderTable([]);
+    errorBox.textContent = error.message || 'Erro de conexão ao carregar os envios.';
+    return false;
   }
+}
+
+async function loadRoundSummaries() {
+  const errorBox = document.getElementById('roundsError');
+  errorBox.textContent = '';
+  try {
+    const resp = await fetch('/api/admin/rodadas-resumo', {
+      headers: { 'x-admin-password': adminPassword }
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) {
+      throw new Error(data.error || 'Não foi possível carregar as rodadas.');
+    }
+    allRoundSummaries = (data.rodadas || []).filter(round =>
+      String(round._id) !== 'legacy' || Number(round.envios) > 0
+    );
+    renderAdminRoundCards();
+    const currentRound = allRoundSummaries.find(
+      round => String(round._id) === currentSubmissionRoundId
+    );
+    if (currentRound) {
+      document.getElementById('submissionsRoundTitle').textContent = currentRound.nome;
+      const status = document.getElementById('submissionsRoundStatus');
+      status.className = `badge ${currentRound.ativo === true ? 'ok' : 'off'}`;
+      status.textContent = currentRound.ativo === true ? 'Ativa' : 'Inativa';
+    }
+    return true;
+  } catch (error) {
+    errorBox.textContent = error.message || 'Erro de conexão ao carregar as rodadas.';
+    document.getElementById('roundsEmptyState').style.display = 'none';
+    if (currentSubmissionRoundId) {
+      document.getElementById('submissionsError').textContent =
+        'Não foi possível atualizar os contadores das rodadas.';
+    }
+    return false;
+  }
+}
+
+function renderAdminRoundCards() {
+  const list = document.getElementById('adminRoundsList');
+  const emptyState = document.getElementById('roundsEmptyState');
+  emptyState.style.display = allRoundSummaries.length ? 'none' : 'block';
+  list.innerHTML = allRoundSummaries.map(rodada => {
+    const active = rodada.ativo === true;
+    const instruments = (rodada.itens || []).map(item => item.titulo).filter(Boolean);
+    const instrumentList = instruments.length
+      ? `<ul class="admin-round-items">${instruments.map(item => `<li>${escapeHtmlAdmin(item)}</li>`).join('')}</ul>`
+      : '<p class="admin-round-no-items">Instrumentos não informados.</p>';
+    return `
+      <article class="admin-round-card">
+        <div class="admin-round-badges">
+          <span class="badge ${active ? 'ok' : 'off'}">${active ? 'Ativa' : 'Inativa'}</span>
+          <span class="badge off">${Number(rodada.envios) || 0} envios</span>
+        </div>
+        <h2>${escapeHtmlAdmin(rodada.nome)}</h2>
+        <span class="admin-round-items-title">Instrumentos</span>
+        ${instrumentList}
+        <button type="button" class="admin-round-open" data-round-id="${escapeAttr(rodada._id)}">Abrir rodada →</button>
+      </article>`;
+  }).join('');
+
+  list.querySelectorAll('.admin-round-open').forEach(button => {
+    button.addEventListener('click', () => openSubmissionRound(button.dataset.roundId));
+  });
+}
+
+function openSubmissionRound(roundId) {
+  const rodada = allRoundSummaries.find(item => String(item._id) === String(roundId));
+  if (!rodada) return;
+  currentSubmissionRoundId = String(rodada._id);
+  document.getElementById('roundSelectionView').hidden = true;
+  document.getElementById('submissionsView').hidden = false;
+  document.getElementById('submissionsRoundTitle').textContent = rodada.nome;
+  const status = document.getElementById('submissionsRoundStatus');
+  status.className = `badge ${rodada.ativo === true ? 'ok' : 'off'}`;
+  status.textContent = rodada.ativo === true ? 'Ativa' : 'Inativa';
+  document.getElementById('searchInput').value = '';
+  loadSubmissions();
+}
+
+function renderFilteredSubmissions() {
+  const query = document.getElementById('searchInput').value.trim().toLowerCase();
+  if (!query) {
+    renderTable(allSubmissions);
+    return;
+  }
+  const filtered = allSubmissions.filter(sub => {
+    const codigo = String(sub.codigo || '').toLowerCase();
+    const razaoSocial = String(sub.clientNome || sub.clientUsername || '').toLowerCase();
+    const tecnico = String((sub.fields && sub.fields.tecnico_nome) || '').toLowerCase();
+    return codigo.includes(query) || razaoSocial.includes(query) || tecnico.includes(query);
+  });
+  renderTable(filtered);
 }
 
 function renderTable(list) {
@@ -425,32 +530,86 @@ function renderTable(list) {
     const tr = document.createElement('tr');
     const razaoSocial = sub.clientNome || sub.clientUsername || '—';
     const tecnico = (sub.fields && sub.fields.tecnico_nome) || '—';
-    const dataCalib = (sub.fields && sub.fields.data_calibracao) || '—';
-    const cliente = sub.clientUsername || '—';
-    const rodada = sub.rodadaNome || 'Legado';
+    const codigo = String(sub.codigo || '');
+    const submissionId = String(sub._id || '');
     tr.innerHTML = `
-      <td class="codigo">${sub.codigo}</td>
-      <td>${razaoSocial}</td>
-      <td class="muted">${tecnico}</td>
-      <td class="muted">${cliente}</td>
-      <td class="muted">${escapeHtmlAdmin(rodada)}</td>
-      <td class="muted">${dataCalib}</td>
+      <td class="codigo">${escapeHtmlAdmin(codigo)}</td>
+      <td>${escapeHtmlAdmin(razaoSocial)}</td>
+      <td class="muted">${escapeHtmlAdmin(tecnico)}</td>
       <td class="muted">${fmtDate(sub.createdAt)}</td>
-      <td class="actions">
-        <button class="view-btn" data-codigo="${sub.codigo}">Ver</button>
-        <button class="pdf-btn" data-codigo="${sub.codigo}">PDF</button>
-        <button class="xlsx-btn" data-codigo="${sub.codigo}">XLSX</button>
-        <button class="del-btn" data-codigo="${sub.codigo}">Excluir</button>
+      <td class="actions submission-actions">
+        <button type="button" class="submission-menu-trigger" aria-label="Ações do envio ${escapeAttr(codigo)}" aria-expanded="false">⋮</button>
+        <div class="submission-action-menu" hidden>
+          <button type="button" data-submission-action="view" data-codigo="${escapeAttr(codigo)}">Ver</button>
+          <button type="button" data-submission-action="pdf" data-codigo="${escapeAttr(codigo)}">PDF</button>
+          <button type="button" data-submission-action="xlsx" data-codigo="${escapeAttr(codigo)}">XLSX</button>
+          <button type="button" data-submission-action="move" data-id="${escapeAttr(submissionId)}">Mover para outra rodada</button>
+          <span class="submission-menu-separator" aria-hidden="true"></span>
+          <button type="button" class="danger-action" data-submission-action="delete" data-codigo="${escapeAttr(codigo)}">Excluir</button>
+        </div>
       </td>
     `;
     tbody.appendChild(tr);
   });
-
-  tbody.querySelectorAll('.pdf-btn').forEach(btn => btn.addEventListener('click', () => downloadPdfFor(btn)));
-  tbody.querySelectorAll('.xlsx-btn').forEach(btn => btn.addEventListener('click', () => downloadXlsxFor(btn)));
-  tbody.querySelectorAll('.view-btn').forEach(btn => btn.addEventListener('click', () => viewSubmission(btn)));
-  tbody.querySelectorAll('.del-btn').forEach(btn => btn.addEventListener('click', () => deleteSubmission(btn)));
 }
+
+function closeSubmissionMenus(restoreFocus = false) {
+  document.querySelectorAll('.submission-action-menu:not([hidden])').forEach(menu => {
+    menu.hidden = true;
+    const trigger = menu.parentElement.querySelector('.submission-menu-trigger');
+    trigger.setAttribute('aria-expanded', 'false');
+    if (restoreFocus) trigger.focus();
+  });
+}
+
+function toggleSubmissionMenu(trigger) {
+  const menu = trigger.parentElement.querySelector('.submission-action-menu');
+  const opening = menu.hidden;
+  closeSubmissionMenus();
+  if (!opening) return;
+  menu.hidden = false;
+  trigger.setAttribute('aria-expanded', 'true');
+  const rect = trigger.getBoundingClientRect();
+  const menuRect = menu.getBoundingClientRect();
+  const left = Math.max(8, Math.min(rect.right - menuRect.width, window.innerWidth - menuRect.width - 8));
+  const top = rect.bottom + menuRect.height <= window.innerHeight - 8
+    ? rect.bottom + 4
+    : Math.max(8, rect.top - menuRect.height - 4);
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+}
+
+document.getElementById('tableBody').addEventListener('click', event => {
+  const trigger = event.target.closest('.submission-menu-trigger');
+  if (trigger) {
+    toggleSubmissionMenu(trigger);
+    return;
+  }
+  const actionButton = event.target.closest('[data-submission-action]');
+  if (!actionButton) return;
+  const triggerButton = actionButton.closest('.submission-action-menu')
+    .parentElement.querySelector('.submission-menu-trigger');
+  closeSubmissionMenus();
+  triggerButton.focus();
+  switch (actionButton.dataset.submissionAction) {
+    case 'view': viewSubmission(actionButton); break;
+    case 'pdf': downloadPdfFor(actionButton); break;
+    case 'xlsx': downloadXlsxFor(actionButton); break;
+    case 'move': openMoveSubmissionModal(actionButton.dataset.id); break;
+    case 'delete': deleteSubmission(actionButton); break;
+  }
+});
+
+document.addEventListener('click', event => {
+  if (!event.target.closest('.submission-actions')) closeSubmissionMenus();
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && document.querySelector('.submission-action-menu:not([hidden])')) {
+    closeSubmissionMenus(true);
+  }
+});
+window.addEventListener('resize', () => closeSubmissionMenus());
+window.addEventListener('scroll', () => closeSubmissionMenus(), true);
 
 async function fetchSubmission(codigo) {
   const resp = await fetch(`/api/admin/submissions/${encodeURIComponent(codigo)}`, {
@@ -554,28 +713,119 @@ async function deleteSubmission(btn) {
       });
       const data = await resp.json();
       if (!resp.ok || !data.ok) throw new Error(data.error || 'Erro ao excluir o envio.');
-      allSubmissions = allSubmissions.filter(s => s.codigo !== codigo);
-      renderTable(allSubmissions);
+      const results = await Promise.all([loadSubmissions(), loadRoundSummaries()]);
+      if (results[0] && !results[1]) {
+        document.getElementById('submissionsError').textContent =
+          'O envio foi excluído, mas os contadores não puderam ser atualizados.';
+      }
     }
   });
 }
 
 document.getElementById('searchInput').addEventListener('input', (e) => {
-  const q = e.target.value.trim().toLowerCase();
-  if (!q) {
-    renderTable(allSubmissions);
-    return;
-  }
-  const filtered = allSubmissions.filter(sub => {
-    const razaoSocial = ((sub.clientNome || sub.clientUsername) || '').toLowerCase();
-    const tecnico = ((sub.fields && sub.fields.tecnico_nome) || '').toLowerCase();
-    const cliente = (sub.clientUsername || '').toLowerCase();
-    return sub.codigo.toLowerCase().includes(q) || razaoSocial.includes(q) || tecnico.includes(q) || cliente.includes(q);
-  });
-  renderTable(filtered);
+  renderFilteredSubmissions();
 });
 
-document.getElementById('refreshBtn').addEventListener('click', loadSubmissions);
+document.getElementById('refreshBtn').addEventListener('click', async () => {
+  const results = await Promise.all([loadSubmissions(), loadRoundSummaries()]);
+  if (results[0] && !results[1]) {
+    document.getElementById('submissionsError').textContent =
+      'Os envios foram atualizados, mas os contadores das rodadas não puderam ser atualizados.';
+  }
+});
+document.getElementById('backToRoundsBtn').addEventListener('click', () => {
+  closeSubmissionMenus();
+  document.getElementById('submissionsView').hidden = true;
+  document.getElementById('roundSelectionView').hidden = false;
+  currentSubmissionRoundId = null;
+});
+
+function openMoveSubmissionModal(submissionId) {
+  const submission = allSubmissions.find(item => String(item._id) === String(submissionId));
+  if (!submission) return;
+  moveModalRestoreFocus = document.activeElement;
+  submissionToMoveId = String(submission._id);
+  const select = document.getElementById('moveSubmissionRound');
+  const destinations = allRoundSummaries.filter(round => String(round._id) !== currentSubmissionRoundId);
+  select.innerHTML = destinations.map(round => `
+    <option value="${escapeAttr(round._id)}">${escapeHtmlAdmin(round.nome)} — ${round.ativo === true ? 'Ativa' : 'Inativa'}</option>
+  `).join('');
+  updateMoveDestinationStatus();
+  document.getElementById('moveSubmissionError').textContent = '';
+  document.getElementById('confirmMoveSubmissionBtn').disabled = destinations.length === 0;
+  openModal('moveSubmissionModal');
+  select.focus();
+}
+
+function updateMoveDestinationStatus() {
+  const selectedRound = allRoundSummaries.find(
+    round => String(round._id) === document.getElementById('moveSubmissionRound').value
+  );
+  const status = document.getElementById('moveSubmissionSelectedStatus');
+  status.hidden = !selectedRound;
+  if (!selectedRound) return;
+  status.className = `badge ${selectedRound.ativo === true ? 'ok' : 'off'}`;
+  status.textContent = selectedRound.ativo === true ? 'Ativa' : 'Inativa';
+}
+
+function closeMoveSubmissionModal() {
+  closeModal('moveSubmissionModal');
+  submissionToMoveId = null;
+  if (moveModalRestoreFocus && moveModalRestoreFocus.isConnected) moveModalRestoreFocus.focus();
+  else document.getElementById('refreshBtn').focus();
+  moveModalRestoreFocus = null;
+}
+
+document.getElementById('moveSubmissionClose').addEventListener('click', closeMoveSubmissionModal);
+document.getElementById('cancelMoveSubmissionBtn').addEventListener('click', closeMoveSubmissionModal);
+document.getElementById('moveSubmissionRound').addEventListener('change', updateMoveDestinationStatus);
+document.getElementById('moveSubmissionModal').addEventListener('click', event => {
+  if (event.target === event.currentTarget) closeMoveSubmissionModal();
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && document.getElementById('moveSubmissionModal').classList.contains('show')) {
+    closeMoveSubmissionModal();
+  }
+});
+
+document.getElementById('confirmMoveSubmissionBtn').addEventListener('click', async () => {
+  if (!submissionToMoveId) return;
+  const button = document.getElementById('confirmMoveSubmissionBtn');
+  const errorBox = document.getElementById('moveSubmissionError');
+  button.disabled = true;
+  errorBox.textContent = '';
+  try {
+    const resp = await fetch(`/api/admin/envios/${encodeURIComponent(submissionToMoveId)}/rodada`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-password': adminPassword
+      },
+      body: JSON.stringify({ rodadaId: document.getElementById('moveSubmissionRound').value })
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) throw new Error(data.error || 'Não foi possível mover o envio.');
+    closeMoveSubmissionModal();
+    const results = await Promise.all([loadSubmissions(), loadRoundSummaries()]);
+    showAdminToast('Envio movido com sucesso.');
+    if (results.includes(false)) {
+      document.getElementById('submissionsError').textContent =
+        'O envio foi movido, mas não foi possível atualizar a lista ou os contadores. Use Atualizar para tentar novamente.';
+    }
+  } catch (error) {
+    errorBox.textContent = error.message || 'Erro de conexão ao mover o envio.';
+  } finally {
+    button.disabled = allRoundSummaries.filter(round => String(round._id) !== currentSubmissionRoundId).length === 0;
+  }
+});
+
+function showAdminToast(message) {
+  const toast = document.getElementById('adminToast');
+  toast.textContent = message;
+  toast.classList.add('show');
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => toast.classList.remove('show'), 3200);
+}
 
 async function loadClients() {
   try {
