@@ -7,6 +7,66 @@ let moveModalRestoreFocus = null;
 let toastTimer = null;
 let allClients = [];
 let clientRodadasUsername = null;
+let rodadaPreviewChannel = null;
+let rodadaPreviewHeartbeat = null;
+let rodadaPreviewBroadcastTimer = null;
+
+const RODADA_PREVIEW_PROTOCOL = window.JgsRodadaPreviewProtocol;
+const RODADA_PREVIEW_CHANNEL = 'previa-rodada';
+
+function postRodadaPreviewMessage(type, draft = null) {
+  if (!rodadaPreviewChannel) return;
+  const message = type === 'draft' || type === 'saved'
+    ? { version: 1, type, draft: draft || readRodadaDraft() }
+    : { version: 1, type };
+  if (RODADA_PREVIEW_PROTOCOL.isValidPreviewMessage(message)) {
+    rodadaPreviewChannel.postMessage(message);
+  }
+}
+
+function initializeRodadaPreviewChannel() {
+  if (rodadaPreviewChannel) return true;
+  if (!('BroadcastChannel' in window) || !RODADA_PREVIEW_PROTOCOL) {
+    document.getElementById('rodadaPreviewStatus').textContent =
+      'Seu navegador não permite abrir a prévia em tempo real.';
+    return false;
+  }
+
+  rodadaPreviewChannel = new BroadcastChannel(RODADA_PREVIEW_CHANNEL);
+  rodadaPreviewChannel.addEventListener('message', event => {
+    if (event.origin !== window.location.origin) return;
+    if (!RODADA_PREVIEW_PROTOCOL.isValidPreviewMessage(event.data)) return;
+    if (event.data.type === 'ready') {
+      postRodadaPreviewMessage('draft');
+    }
+  });
+  window.addEventListener('pagehide', () => postRodadaPreviewMessage('closed'));
+  rodadaPreviewHeartbeat = window.setInterval(() => {
+    if (adminPassword) postRodadaPreviewMessage('heartbeat');
+  }, 1000);
+  return true;
+}
+
+function openRodadaPreview() {
+  if (!initializeRodadaPreviewChannel()) return;
+  const previewWindow = window.open('/admin/previa', 'previaRodada');
+  if (!previewWindow) {
+    document.getElementById('rodadaPreviewStatus').textContent =
+      'A prévia foi bloqueada. Clique em "Abrir prévia" para tentar novamente.';
+    return;
+  }
+  document.getElementById('rodadaPreviewStatus').textContent = '';
+  postRodadaPreviewMessage('draft');
+}
+
+function scheduleRodadaPreviewBroadcast() {
+  if (!rodadaPreviewChannel || !adminPassword) return;
+  window.clearTimeout(rodadaPreviewBroadcastTimer);
+  rodadaPreviewBroadcastTimer = window.setTimeout(
+    () => postRodadaPreviewMessage('draft'),
+    150
+  );
+}
 
 function parseXlsxNumber(value) {
   const normalized = String(value).trim().replace(',', '.');
@@ -361,6 +421,7 @@ async function tryLogin() {
       return;
     }
     adminPassword = pwd;
+    initializeRodadaPreviewChannel();
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('panelScreen').style.display = 'block';
     loadRoundSummaries();
@@ -385,6 +446,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+    if (btn.dataset.tab === 'rodada' && adminPassword) openRodadaPreview();
     if (btn.dataset.tab === 'envios' && adminPassword) loadRoundSummaries();
   });
 });
@@ -1110,6 +1172,51 @@ document.getElementById('refreshClientsBtn').addEventListener('click', loadClien
 let allRodadas = [];
 let editingRodadaId = null;
 
+function readOptions(list, includeIncomplete = false, trimValues = false) {
+  if (!list) return [];
+  const options = Array.from(list.querySelectorAll(':scope > .rodada-opcao-row'))
+    .map(option => {
+      const nome = option.querySelector('.rodada-opcao-nome').value;
+      const unidade = option.querySelector('.rodada-opcao-unidade').value;
+      return {
+        nome: trimValues ? nome.trim() : nome,
+        unidade: trimValues ? unidade.trim() : unidade,
+        tipo: option.querySelector('.rodada-opcao-tipo').value,
+        repetir: option.querySelector('.rodada-opcao-aplicacao').value === 'todos',
+      };
+    });
+  return includeIncomplete ? options : options.filter(option => option.nome.trim());
+}
+
+function readRodadaDraft() {
+  const rows = Array.from(document.querySelectorAll('#rodadaItensList .rodada-item-row'));
+  const selectedItemIndex = rows.findIndex(row => row.classList.contains('active'));
+  return {
+    roundId: editingRodadaId || '',
+    nome: document.getElementById('rodadaNomeInput').value,
+    descricaoCta: document.getElementById('rodadaDescricaoInput').value,
+    ativo: document.getElementById('rodadaAtivaInput').checked,
+    selectedItemIndex,
+    itens: rows.map(row => {
+      const multi = row.querySelector('.rodada-item-multi').checked;
+      return {
+        titulo: row.querySelector('.rodada-item-titulo').value,
+        descricao: row.querySelector('.rodada-item-descricao').value,
+        opcoes: readOptions(
+          row.querySelector('.rodada-item-opcoes-diretas .rodada-opcoes-list'),
+          true
+        ),
+        pontos: multi
+          ? Array.from(row.querySelectorAll('.rodada-pontos-list > .rodada-ponto-panel')).map(point => ({
+              nome: point.querySelector('.rodada-ponto-nome').value,
+              opcoes: readOptions(point.querySelector('.rodada-opcoes-list'), true),
+            }))
+          : [],
+      };
+    }),
+  };
+}
+
 function escapeAttr(str) {
   return String(str == null ? '' : str)
     .replace(/&/g, '&amp;')
@@ -1224,6 +1331,7 @@ function createRodadaItemRow(titulo, descricao, opcoes, pontos) {
 }
 
 document.getElementById('addRodadaItemBtn').addEventListener('click', () => {
+  openRodadaPreview();
   const list = document.getElementById('rodadaItensList');
   list.querySelectorAll('.rodada-item-row').forEach(item => item.classList.remove('active'));
   list.appendChild(createRodadaItemRow('', ''));
@@ -1246,7 +1354,31 @@ function resetRodadaForm() {
   document.getElementById('rodadaSaveStatus').textContent = '';
 }
 
-document.getElementById('cancelRodadaEditBtn').addEventListener('click', resetRodadaForm);
+document.getElementById('openRodadaPreviewBtn').addEventListener('click', openRodadaPreview);
+
+const rodadaEditor = document.getElementById('tab-rodada');
+rodadaEditor.addEventListener('input', scheduleRodadaPreviewBroadcast);
+rodadaEditor.addEventListener('change', scheduleRodadaPreviewBroadcast);
+rodadaEditor.addEventListener('click', event => {
+  if (event.target.closest([
+    '#addRodadaItemBtn',
+    '.add-rodada-ponto',
+    '.add-rodada-opcao',
+    '.add-rodada-opcao-direta',
+    '.remove-rodada-item',
+    '.remove-rodada-ponto',
+    '.remove-rodada-opcao',
+    '.rodada-item-tab',
+  ].join(','))) {
+    scheduleRodadaPreviewBroadcast();
+  }
+});
+
+document.getElementById('cancelRodadaEditBtn').addEventListener('click', () => {
+  openRodadaPreview();
+  resetRodadaForm();
+  scheduleRodadaPreviewBroadcast();
+});
 
 async function loadRodadas() {
   const errorBox = document.getElementById('rodadaError');
@@ -1602,6 +1734,7 @@ function editRodada(id) {
   const rodada = allRodadas.find(r => r._id === id);
   if (!rodada) return;
 
+  openRodadaPreview();
   editingRodadaId = id;
   document.getElementById('rodadaFormTitle').textContent = `Editando: ${rodada.nome}`;
   document.getElementById('rodadaNomeInput').value = rodada.nome || '';
@@ -1623,6 +1756,7 @@ function editRodada(id) {
   document.getElementById('rodadaSaveStatus').textContent = '';
 
   document.getElementById('tab-rodada').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  scheduleRodadaPreviewBroadcast();
 }
 
 async function toggleRodadaAtiva(btn) {
@@ -1683,28 +1817,19 @@ document.getElementById('saveRodadaBtn').addEventListener('click', async () => {
   const descricaoCta = document.getElementById('rodadaDescricaoInput').value.trim();
   const ativo = document.getElementById('rodadaAtivaInput').checked;
 
-  const readOptions = list => Array.from(list.querySelectorAll(':scope > .rodada-opcao-row'))
-    .map(option => ({
-      nome: option.querySelector('.rodada-opcao-nome').value.trim(),
-      unidade: option.querySelector('.rodada-opcao-unidade').value.trim(),
-      tipo: option.querySelector('.rodada-opcao-tipo').value,
-      repetir: option.querySelector('.rodada-opcao-aplicacao').value === 'todos',
-    }))
-    .filter(option => option.nome);
-
   const itens = Array.from(document.querySelectorAll('#rodadaItensList .rodada-item-row')).map(row => {
     const multi = row.querySelector('.rodada-item-multi').checked;
     const item = {
       titulo: row.querySelector('.rodada-item-titulo').value.trim(),
       descricao: row.querySelector('.rodada-item-descricao').value.trim(),
-      opcoes: readOptions(row.querySelector('.rodada-item-opcoes-diretas .rodada-opcoes-list')),
+      opcoes: readOptions(row.querySelector('.rodada-item-opcoes-diretas .rodada-opcoes-list'), false, true),
       pontos: [],
     };
 
     if (multi) {
       item.pontos = Array.from(row.querySelectorAll('.rodada-pontos-list > .rodada-ponto-panel')).map(point => ({
         nome: point.querySelector('.rodada-ponto-nome').value.trim(),
-        opcoes: readOptions(point.querySelector('.rodada-opcoes-list')),
+        opcoes: readOptions(point.querySelector('.rodada-opcoes-list'), false, true),
       })).filter(point => point.nome);
     }
 
@@ -1739,6 +1864,17 @@ document.getElementById('saveRodadaBtn').addEventListener('click', async () => {
       return;
     }
 
+    const savedDraft = readRodadaDraft();
+    savedDraft.roundId = String((data.rodada && data.rodada._id) || editingRodadaId || '');
+    savedDraft.nome = nome;
+    savedDraft.descricaoCta = descricaoCta;
+    savedDraft.ativo = ativo;
+    savedDraft.itens = itens;
+    savedDraft.selectedItemIndex = Math.min(
+      Math.max(0, savedDraft.selectedItemIndex),
+      itens.length - 1
+    );
+    postRodadaPreviewMessage('saved', savedDraft);
     resetRodadaForm();
     statusLabel.textContent = isEditing ? 'Alterações salvas!' : 'Rodada criada!';
     loadRodadas();

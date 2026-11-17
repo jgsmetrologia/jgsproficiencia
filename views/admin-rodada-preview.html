@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prévia da rodada — Administração</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css?v=3">
+  <link rel="stylesheet" href="/rodada-client.css?v=5">
+  <link rel="stylesheet" href="/rodada-preview.css?v=1">
+</head>
+<body>
+  <aside class="preview-banner" role="status">
+    <strong id="previewSaveState">PRÉVIA — alterações ainda não salvas</strong>
+    <span id="previewConnectionState">Aguardando conexão com o editor</span>
+  </aside>
+  <main id="previewEmptyState" class="preview-empty">
+    Abra ou crie uma rodada no painel para ver a prévia.
+  </main>
+  <main id="dynamic-form-wrap" class="dynamic-form-wrap" hidden>
+    <header class="dynamic-form-header">
+      <span class="badge">Formulário da rodada</span>
+      <h1 id="rodadaNome"></h1>
+    </header>
+    <form id="previewForm">
+      <section class="dynamic-section is-open">
+        <div class="dynamic-section-title">Identificação</div>
+        <div class="dynamic-fields">
+          <label>Código do participante<input id="codigo" readonly disabled></label>
+          <label>Data da chegada<input id="data_chegada" type="date" disabled></label>
+          <label>Data da calibração<input id="data_calibracao" type="date" disabled></label>
+          <label>Data da saída<input id="data_saida" type="date" disabled></label>
+          <label>Técnico responsável<input id="tecnico_nome" disabled></label>
+        </div>
+      </section>
+      <div id="itensContainer"></div>
+      <button class="primary dynamic-submit" type="submit" id="submitBtn" disabled>Enviar resultados</button>
+    </form>
+  </main>
+  <script src="/rodada-preview-protocol.js?v=1"></script>
+  <script src="/rodada-renderer.js?v=1"></script>
+  <script src="/rodada-preview.js?v=1"></script>
+</body>
+</html>

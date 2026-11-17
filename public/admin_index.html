@@ -165,7 +165,9 @@
         <div style="margin-top:22px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
           <button class="primary" type="button" id="saveRodadaBtn" style="width:auto;">Criar rodada</button>
           <button class="secondary" type="button" id="cancelRodadaEditBtn" style="display:none;">Cancelar edição</button>
+          <button class="secondary" type="button" id="openRodadaPreviewBtn">Abrir prévia</button>
           <span class="count" id="rodadaSaveStatus"></span>
+          <span class="count" id="rodadaPreviewStatus" role="status" aria-live="polite"></span>
         </div>
         <div class="error-msg" id="rodadaError"></div>
       </div>
@@ -265,6 +267,7 @@
 </div>
 
 <script src="pdf-utils.js"></script>
-<script src="admin.js?v=17"></script>
+<script src="rodada-preview-protocol.js?v=1"></script>
+<script src="admin.js?v=18"></script>
 </body>
 </html>

@@ -1,13 +1,5 @@
 const ROUND_TOKEN_KEY = 'client_token';
-
-function escapeHtml(value){
-  return String(value == null ? '' : value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+const ROUND_RENDERER = window.JgsRodadaRenderer;
 
 function makeCode(){
   return `JGS-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -19,89 +11,6 @@ function logout(){
   localStorage.removeItem('client_nome');
   if(token) fetch('/api/client/logout', { method:'POST', headers:{ 'x-client-token': token } }).catch(() => {});
   window.location.replace('/login');
-}
-
-function fieldHtml(id, label, type = 'text', required = true){
-  return `<label>${label}<input id="${id}" type="${type}" ${type === 'number' ? 'step="any"' : ''} ${required ? 'required' : ''}></label>`;
-}
-
-function renderPointFields(prefix){
-  return `
-    <div class="dynamic-fields">
-      ${fieldHtml(`${prefix}_massa_vazia`, 'Massa vazia e seca (g)', 'number', false)}
-      ${fieldHtml(`${prefix}_massa_cheia`, 'Massa média cheia (g)', 'number', false)}
-      ${fieldHtml(`${prefix}_volume`, 'Volume medido', 'number')}
-      ${fieldHtml(`${prefix}_incerteza`, 'Incerteza de medição', 'number')}
-      ${fieldHtml(`${prefix}_k`, 'k', 'number')}
-      ${fieldHtml(`${prefix}_veff`, 'Veff', 'text')}
-      ${fieldHtml(`${prefix}_temp_agua`, 'Temperatura da água (°C)', 'number')}
-      ${fieldHtml(`${prefix}_temp_amb`, 'Temperatura ambiente (°C)', 'number')}
-      ${fieldHtml(`${prefix}_umidade`, 'Umidade relativa (%)', 'number')}
-      ${fieldHtml(`${prefix}_pressao`, 'Pressão atmosférica (hPa)', 'number')}
-      ${fieldHtml(`${prefix}_massa_esp`, 'Massa específica da água (g/mL)', 'number')}
-    </div>`;
-}
-
-function renderOptionFields(item, index){
-  return item.opcoes.map((opcao, optionIndex) => {
-    const type = opcao.tipo === 'numero' ? 'number' : 'text';
-    const label = `${opcao.nome}${opcao.unidade ? ` (${opcao.unidade})` : ''}`;
-    return fieldHtml(`item_${index}_opcao_${optionIndex}`, escapeHtml(label), type);
-  }).join('');
-}
-
-function renderItem(item, index){
-  if(Array.isArray(item.pontos) && item.pontos.length){
-    return `
-      <section class="dynamic-section is-open">
-        <div class="dynamic-section-tag">${String(index + 1).padStart(2, '0')} — Item de ensaio</div>
-        <div class="dynamic-section-title">${escapeHtml(item.titulo)}</div>
-        ${item.opcoes && item.opcoes.length
-          ? `<div class="dynamic-general-fields">${item.opcoes.filter(opcao => opcao.repetir === false).map((opcao, optionIndex) => fieldHtml(
-              `item_${index}_geral_${optionIndex}`,
-              escapeHtml(`${opcao.nome}${opcao.unidade ? ` (${opcao.unidade})` : ''}`),
-              opcao.tipo === 'numero' ? 'number' : 'text'
-            )).join('')}</div>`
-          : ''}
-        ${item.pontos.map((ponto, pointIndex) => {
-          const point = typeof ponto === 'string' ? { nome: ponto, opcoes: [] } : ponto;
-          const pointPrefix = `item_${index}_ponto_${pointIndex}`;
-          const repeatedOptions = (item.opcoes || []).filter(opcao => opcao.repetir !== false);
-          const pointOptions = [...repeatedOptions, ...(point.opcoes || [])];
-          return `<div class="dynamic-point">
-            <h3>${escapeHtml(point.nome)}</h3>
-            ${pointOptions.length
-              ? `<div class="dynamic-fields">${pointOptions.map((opcao, optionIndex) => fieldHtml(
-                  `${pointPrefix}_opcao_${optionIndex}`,
-                  escapeHtml(`${opcao.nome}${opcao.unidade ? ` (${opcao.unidade})` : ''}`),
-                  opcao.tipo === 'numero' ? 'number' : 'text'
-                )).join('')}</div>`
-              : renderPointFields(pointPrefix)}
-          </div>`;
-        }).join('')}
-      </section>`;
-  }
-
-  if(Array.isArray(item.opcoes) && item.opcoes.length){
-    return `
-      <section class="dynamic-section is-open">
-        <div class="dynamic-section-tag">${String(index + 1).padStart(2, '0')} — Item de ensaio</div>
-        <div class="dynamic-section-title">${escapeHtml(item.titulo)}</div>
-        <div class="dynamic-fields">${renderOptionFields(item, index)}</div>
-      </section>`;
-  }
-
-  const pontos = Array.isArray(item.pontos) && item.pontos.length ? item.pontos : ['Medição'];
-  return `
-    <section class="dynamic-section is-open">
-        <div class="dynamic-section-tag">${String(index + 1).padStart(2, '0')} — Item de ensaio</div>
-      <div class="dynamic-section-title">${escapeHtml(item.titulo)}</div>
-      ${pontos.map((ponto, pointIndex) => `
-        <div class="dynamic-point">
-          <h3>${escapeHtml(ponto || `Medição ${pointIndex + 1}`)}</h3>
-          ${renderPointFields(`item_${index}_ponto_${pointIndex}`)}
-        </div>`).join('')}
-    </section>`;
 }
 
 function collectRows(rodada){
@@ -158,26 +67,6 @@ function collectRows(rodada){
   return rows;
 }
 
-function bindSectionToggles(){
-  document.querySelectorAll('.dynamic-section-title').forEach(title => {
-    title.setAttribute('role', 'button');
-    title.setAttribute('tabindex', '0');
-    title.setAttribute('aria-expanded', 'true');
-    const toggle = () => {
-      const section = title.closest('.dynamic-section');
-      const expanded = section.classList.toggle('is-open');
-      title.setAttribute('aria-expanded', String(expanded));
-    };
-    title.addEventListener('click', toggle);
-    title.addEventListener('keydown', event => {
-      if(event.key === 'Enter' || event.key === ' '){
-        event.preventDefault();
-        toggle();
-      }
-    });
-  });
-}
-
 function restoreDraft(form, draftKey){
   try{
     const values = JSON.parse(localStorage.getItem(draftKey) || 'null');
@@ -220,8 +109,8 @@ async function init(){
 
     document.getElementById('rodadaNome').textContent = rodada.nome;
     document.getElementById('codigo').value = makeCode();
-    document.getElementById('itensContainer').innerHTML = rodada.itens.map(renderItem).join('');
-    bindSectionToggles();
+    document.getElementById('itensContainer').innerHTML = ROUND_RENDERER.renderRoundItems(rodada.itens);
+    ROUND_RENDERER.bindSectionToggles();
 
     const form = document.getElementById('rodadaForm');
     const draftKey = `rodada_draft:${token}:${rodadaId}`;

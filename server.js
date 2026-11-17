@@ -115,6 +115,10 @@ app.get("/rodada.js", (req, res) => {
 app.get("/admin", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "admin_index.html"));
 });
+app.get("/admin/previa", requireAdminSession, (req, res) => {
+  res.sendFile(path.join(__dirname, "views", "admin-rodada-preview.html"));
+});
+
 function generateTempPassword(len = 8) {
   const alphabet =
     "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
@@ -715,6 +719,45 @@ app.get(
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "JgsAdm";
+const ADMIN_SESSION_COOKIE = "jgs_admin_session";
+const ADMIN_SESSION_TTL_SECONDS = 8 * 60 * 60;
+
+function createAdminSessionToken(expiresAt) {
+  const payload = String(expiresAt);
+  const signature = crypto
+    .createHmac("sha256", ADMIN_PASSWORD)
+    .update(`admin-preview-session:v1:${payload}`)
+    .digest("base64url");
+  return `${payload}.${signature}`;
+}
+
+function isValidAdminSessionToken(token) {
+  if (!ADMIN_PASSWORD || typeof token !== "string") return false;
+  const [expiresAt, signature, extra] = token.split(".");
+  if (!expiresAt || !signature || extra !== undefined || !/^\d+$/.test(expiresAt)) {
+    return false;
+  }
+  if (Number(expiresAt) <= Date.now()) return false;
+
+  const expected = createAdminSessionToken(expiresAt).split(".")[1];
+  const receivedBytes = Buffer.from(signature);
+  const expectedBytes = Buffer.from(expected);
+  return receivedBytes.length === expectedBytes.length &&
+    crypto.timingSafeEqual(receivedBytes, expectedBytes);
+}
+
+function requireAdminSession(req, res, next) {
+  const cookieHeader = req.headers.cookie || "";
+  const cookie = cookieHeader.split(";")
+    .map(value => value.trim())
+    .find(value => value.startsWith(`${ADMIN_SESSION_COOKIE}=`));
+  const token = cookie ? cookie.slice(ADMIN_SESSION_COOKIE.length + 1) : "";
+
+  if (!isValidAdminSessionToken(token)) {
+    return res.status(401).send("Acesso restrito ao painel de administra\u00e7\u00e3o.");
+  }
+  next();
+}
 
 function requireAdmin(req, res, next) {
   if (!ADMIN_PASSWORD) {
@@ -749,6 +792,12 @@ app.post("/api/admin/login", (req, res) => {
   const { username, password } = req.body || {};
 
   if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+    const expiresAt = Date.now() + ADMIN_SESSION_TTL_SECONDS * 1000;
+    const secure = req.secure || req.headers["x-forwarded-proto"] === "https";
+    res.setHeader(
+      "Set-Cookie",
+      `${ADMIN_SESSION_COOKIE}=${createAdminSessionToken(expiresAt)}; Path=/admin; HttpOnly; SameSite=Strict; Max-Age=${ADMIN_SESSION_TTL_SECONDS}${secure ? "; Secure" : ""}`
+    );
     return res.status(200).json({
       ok: true,
     });
@@ -1621,13 +1670,17 @@ app.use((req, res) => {
   res.status(404).sendFile(path.join(__dirname, "public", "404.html"));
 });
 
-app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
-  console.log(`http://26.83.139.199:${PORT} Tambem tá`);
-  connectToMongo().catch((err) =>
-    console.error(
-      "Falha ao conectar no MongoDB na inicialização:",
-      err
-    )
-  );
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Servidor rodando na porta ${PORT}`);
+    console.log(`http://26.83.139.199:${PORT} Tambem tá`);
+    connectToMongo().catch((err) =>
+      console.error(
+        "Falha ao conectar no MongoDB na inicialização:",
+        err
+      )
+    );
+  });
+}
+
+module.exports = app;
