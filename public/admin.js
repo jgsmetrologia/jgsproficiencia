@@ -10,8 +10,10 @@ let clientRodadasUsername = null;
 let rodadaPreviewChannel = null;
 let rodadaPreviewHeartbeat = null;
 let rodadaPreviewBroadcastTimer = null;
+let rodadaOptionRowId = 0;
 
 const RODADA_PREVIEW_PROTOCOL = window.JgsRodadaPreviewProtocol;
+const RODADA_EDITOR_UTILS = window.JgsRodadaEditorUtils;
 const RODADA_PREVIEW_CHANNEL = 'previa-rodada';
 
 function postRodadaPreviewMessage(type, draft = null) {
@@ -1172,9 +1174,10 @@ document.getElementById('refreshClientsBtn').addEventListener('click', loadClien
 let allRodadas = [];
 let editingRodadaId = null;
 
-function readOptions(list, includeIncomplete = false, trimValues = false) {
+function readOptions(list, includeIncomplete = false, trimValues = false, excludedRow = null) {
   if (!list) return [];
   const options = Array.from(list.querySelectorAll(':scope > .rodada-opcao-row'))
+    .filter(option => option !== excludedRow)
     .map(option => {
       const nome = option.querySelector('.rodada-opcao-nome').value;
       const unidade = option.querySelector('.rodada-opcao-unidade').value;
@@ -1182,7 +1185,7 @@ function readOptions(list, includeIncomplete = false, trimValues = false) {
         nome: trimValues ? nome.trim() : nome,
         unidade: trimValues ? unidade.trim() : unidade,
         tipo: option.querySelector('.rodada-opcao-tipo').value,
-        repetir: option.querySelector('.rodada-opcao-aplicacao').value === 'todos',
+        repetir: true,
       };
     });
   return includeIncomplete ? options : options.filter(option => option.nome.trim());
@@ -1198,23 +1201,135 @@ function readRodadaDraft() {
     ativo: document.getElementById('rodadaAtivaInput').checked,
     selectedItemIndex,
     itens: rows.map(row => {
-      const multi = row.querySelector('.rodada-item-multi').checked;
       return {
         titulo: row.querySelector('.rodada-item-titulo').value,
         descricao: row.querySelector('.rodada-item-descricao').value,
-        opcoes: readOptions(
-          row.querySelector('.rodada-item-opcoes-diretas .rodada-opcoes-list'),
-          true
-        ),
-        pontos: multi
-          ? Array.from(row.querySelectorAll('.rodada-pontos-list > .rodada-ponto-panel')).map(point => ({
-              nome: point.querySelector('.rodada-ponto-nome').value,
-              opcoes: readOptions(point.querySelector('.rodada-opcoes-list'), true),
-            }))
-          : [],
+        opcoes: [],
+        pontos: Array.from(row.querySelectorAll('.rodada-pontos-list > .rodada-ponto-panel')).map(point => ({
+          nome: point.querySelector('.rodada-ponto-nome').value,
+          opcoes: readOptions(point.querySelector('.rodada-opcoes-list'), true),
+        })),
       };
     }),
   };
+}
+
+const rodadaOptionAutocomplete = new WeakMap();
+
+function readCurrentRodadaItems(excludedInput = null) {
+  return Array.from(document.querySelectorAll('#rodadaItensList .rodada-item-row')).map(row => ({
+    opcoes: [],
+    pontos: Array.from(row.querySelectorAll('.rodada-pontos-list > .rodada-ponto-panel')).map(point => {
+      const optionList = point.querySelector('.rodada-opcoes-list');
+      return {
+        opcoes: readOptions(
+          optionList,
+          false,
+          false,
+          excludedInput && excludedInput.closest('.rodada-opcao-row')
+        ),
+      };
+    }),
+  }));
+}
+
+function formatOptionSuggestion(option) {
+  const type = option.tipo === 'numero' ? 'Número' : 'Texto';
+  return `${option.nome} · ${option.unidade || 'sem unidade'} · ${type}`;
+}
+
+function hideOptionAutocomplete(input) {
+  const wrapper = input.closest('.rodada-opcao-nome-wrap');
+  if (!wrapper) return;
+  wrapper.querySelector('.rodada-opcao-sugestao').hidden = true;
+  wrapper.querySelector('.rodada-opcao-sugestoes').hidden = true;
+  wrapper.querySelector('.rodada-opcao-sugestoes').replaceChildren();
+  input.setAttribute('aria-expanded', 'false');
+  input.removeAttribute('aria-activedescendant');
+  rodadaOptionAutocomplete.delete(input);
+}
+
+function renderOptionAutocomplete(input) {
+  const wrapper = input.closest('.rodada-opcao-nome-wrap');
+  const hint = wrapper.querySelector('.rodada-opcao-sugestao');
+  const list = wrapper.querySelector('.rodada-opcao-sugestoes');
+  const query = RODADA_EDITOR_UTILS.normalizeText(input.value);
+
+  if (query.length < 2) {
+    hideOptionAutocomplete(input);
+    return;
+  }
+
+  const catalog = RODADA_EDITOR_UTILS.buildOptionCatalog(
+    allRodadas,
+    readCurrentRodadaItems(input),
+    editingRodadaId
+  );
+  const matches = catalog.filter(option =>
+    RODADA_EDITOR_UTILS.normalizeText(option.nome).startsWith(query)
+  );
+  if (!matches.length) {
+    hideOptionAutocomplete(input);
+    return;
+  }
+
+  const firstName = RODADA_EDITOR_UTILS.normalizeText(matches[0].nome);
+  const variants = matches.filter(option =>
+    RODADA_EDITOR_UTILS.normalizeText(option.nome) === firstName
+  );
+  const choices = variants.length > 1 ? variants : [matches[0]];
+  const state = { choices, activeIndex: 0 };
+  rodadaOptionAutocomplete.set(input, state);
+  hint.textContent = formatOptionSuggestion(choices[0]);
+  hint.hidden = false;
+  input.setAttribute('aria-expanded', String(choices.length > 1));
+
+  if (choices.length > 1) {
+    list.innerHTML = choices.map((option, index) => `
+      <button type="button" class="rodada-opcao-sugestao-item${index === 0 ? ' is-active' : ''}"
+        id="${input.closest('.rodada-opcao-row').id}-suggestion-${index}"
+        role="option" aria-selected="${index === 0}" data-suggestion-index="${index}">
+        ${escapeHtmlAdmin(formatOptionSuggestion(option))}
+      </button>`).join('');
+    list.hidden = false;
+    input.setAttribute('aria-activedescendant', `${input.closest('.rodada-opcao-row').id}-suggestion-0`);
+  } else {
+    list.replaceChildren();
+    list.hidden = true;
+    input.removeAttribute('aria-activedescendant');
+  }
+}
+
+function setActiveOptionSuggestion(input, index) {
+  const state = rodadaOptionAutocomplete.get(input);
+  if (!state || state.choices.length < 2) return;
+  state.activeIndex = (index + state.choices.length) % state.choices.length;
+  const wrapper = input.closest('.rodada-opcao-nome-wrap');
+  wrapper.querySelectorAll('.rodada-opcao-sugestao-item').forEach((button, buttonIndex) => {
+    const active = buttonIndex === state.activeIndex;
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+  wrapper.querySelector('.rodada-opcao-sugestao').textContent =
+    formatOptionSuggestion(state.choices[state.activeIndex]);
+  input.setAttribute(
+    'aria-activedescendant',
+    `${input.closest('.rodada-opcao-row').id}-suggestion-${state.activeIndex}`
+  );
+}
+
+function acceptOptionSuggestion(input, choiceIndex = null) {
+  const state = rodadaOptionAutocomplete.get(input);
+  if (!state || !state.choices.length) return false;
+  const choice = state.choices[choiceIndex == null ? state.activeIndex : choiceIndex];
+  const row = input.closest('.rodada-opcao-row');
+  input.value = choice.nome;
+  row.querySelector('.rodada-opcao-unidade').value = choice.unidade;
+  row.querySelector('.rodada-opcao-tipo').value = choice.tipo;
+  hideOptionAutocomplete(input);
+  scheduleRodadaPreviewBroadcast();
+  row.querySelector('.rodada-opcao-unidade').focus();
+  return true;
 }
 
 function escapeAttr(str) {
@@ -1235,54 +1350,88 @@ function escapeHtmlAdmin(str) {
     .replace(/'/g, '&#39;');
 }
 
-function createOptionRow(nome = '', unidade = '', tipo = 'numero', repetir = true) {
+function createOptionRow(nome = '', unidade = '', tipo = 'numero') {
   const row = document.createElement('div');
   row.className = 'rodada-opcao-row';
+  row.id = `rodada-opcao-row-${++rodadaOptionRowId}`;
+  const suggestionsId = `${row.id}-suggestions`;
   row.innerHTML = `
-    <input class="rodada-opcao-nome" type="text" placeholder="Nome da opção" value="${escapeAttr(nome)}">
-    <input class="rodada-opcao-unidade" type="text" placeholder="Unidade" value="${escapeAttr(unidade)}">
+    <div class="rodada-opcao-nome-wrap">
+      <input class="rodada-opcao-nome" type="text" placeholder="Nome da opção" value="${escapeAttr(nome)}"
+        role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${suggestionsId}">
+      <span class="rodada-opcao-sugestao" aria-live="polite" hidden></span>
+      <div id="${suggestionsId}" class="rodada-opcao-sugestoes" role="listbox" hidden></div>
+    </div>
+    <input class="rodada-opcao-unidade" type="text" placeholder="Unidade (opcional)" value="${escapeAttr(unidade)}">
     <select class="rodada-opcao-tipo" aria-label="Tipo da opção">
       <option value="numero" ${tipo === 'numero' ? 'selected' : ''}>Número</option>
       <option value="texto" ${tipo === 'texto' ? 'selected' : ''}>Texto</option>
     </select>
-    <select class="rodada-opcao-aplicacao" aria-label="Aplicação da opção">
-      <option value="todos" ${repetir !== false ? 'selected' : ''}>Todos os pontos</option>
-      <option value="uma" ${repetir === false ? 'selected' : ''}>Uma vez</option>
-    </select>
-    <button type="button" class="del-btn remove-rodada-opcao">Remover</button>`;
-  row.querySelector('.remove-rodada-opcao').addEventListener('click', () => row.remove());
+    <button type="button" class="del-btn remove-rodada-opcao" title="Remover campo" aria-label="Remover campo">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M4 7h16M10 11v6m4-6v6M5 7l1 14h12l1-14M9 7V4h6v3"></path>
+      </svg>
+    </button>`;
+  row.querySelector('.remove-rodada-opcao').addEventListener('click', () => {
+    row.remove();
+    scheduleRodadaPreviewBroadcast();
+  });
   return row;
 }
 
-function createOptionList(options = []) {
-  const list = document.createElement('div');
-  list.className = 'rodada-opcoes-list';
-  options.forEach(option => {
-    list.appendChild(createOptionRow(option.nome || '', option.unidade || '', option.tipo || 'numero', option.repetir !== false));
+function refreshPointPanels(pointsList) {
+  Array.from(pointsList.children).forEach((panel, index) => {
+    panel.querySelector('.copy-rodada-ponto').hidden = index === 0;
   });
-  if (!options.length) list.appendChild(createOptionRow());
-  return list;
 }
 
-function createPointPanel(point = {}) {
+function createPointPanel(point = {}, index = 0) {
   const panel = document.createElement('div');
   panel.className = 'rodada-ponto-panel';
   panel.innerHTML = `
     <div class="rodada-ponto-head">
       <input class="rodada-ponto-nome" type="text" placeholder="Nome do ponto (ex.: 1 mL)" value="${escapeAttr(point.nome || '')}">
+      <button type="button" class="secondary copy-rodada-ponto" ${index === 0 ? 'hidden' : ''}>Copiar campos do ponto anterior</button>
       <button type="button" class="del-btn remove-rodada-ponto">Remover ponto</button>
     </div>
-    <div class="rodada-ponto-opcoes"></div>
+    <div class="rodada-opcoes-list"></div>
     <button type="button" class="secondary add-rodada-opcao">+ Nova linha</button>`;
-  const optionsList = createOptionList(point.opcoes || []);
-  panel.querySelector('.rodada-ponto-opcoes').appendChild(optionsList);
+  const optionsList = panel.querySelector('.rodada-opcoes-list');
+  (point.opcoes || []).forEach(option => {
+    optionsList.appendChild(createOptionRow(option.nome || '', option.unidade || '', option.tipo || 'numero'));
+  });
+  if (!optionsList.children.length) optionsList.appendChild(createOptionRow());
   panel.querySelector('.add-rodada-opcao').addEventListener('click', () => optionsList.appendChild(createOptionRow()));
-  panel.querySelector('.remove-rodada-ponto').addEventListener('click', () => panel.remove());
+  panel.querySelector('.remove-rodada-ponto').addEventListener('click', () => {
+    const pointsList = panel.parentElement;
+    panel.remove();
+    refreshPointPanels(pointsList);
+    scheduleRodadaPreviewBroadcast();
+  });
+  panel.querySelector('.copy-rodada-ponto').addEventListener('click', () => {
+    const previousPoint = panel.previousElementSibling;
+    if (!previousPoint) return;
+    const currentOptions = readOptions(optionsList);
+    if (currentOptions.length && !window.confirm('Este ponto já tem campos. Substituir pelos do ponto anterior?')) return;
+
+    const copiedOptions = readOptions(
+      previousPoint.querySelector('.rodada-opcoes-list')
+    ).map(option => ({ ...option, repetir: true }));
+    optionsList.replaceChildren();
+    copiedOptions.forEach(option => {
+      optionsList.appendChild(createOptionRow(option.nome, option.unidade, option.tipo));
+    });
+    if (!copiedOptions.length) optionsList.appendChild(createOptionRow());
+    scheduleRodadaPreviewBroadcast();
+  });
   return panel;
 }
 
-function createRodadaItemRow(titulo, descricao, opcoes, pontos) {
+function createRodadaItemRow(titulo, descricao, pontos) {
   const row = document.createElement('div');
+  const initialPoints = Array.isArray(pontos) && pontos.length
+    ? pontos
+    : [{ nome: 'Medição', opcoes: [] }];
   row.className = 'rodada-item-row';
   row.innerHTML = `
     <button type="button" class="rodada-item-tab">${escapeHtmlAdmin(titulo || 'Novo equipamento')}</button>
@@ -1291,10 +1440,7 @@ function createRodadaItemRow(titulo, descricao, opcoes, pontos) {
         <input type="text" class="rodada-item-titulo" placeholder="Nome do equipamento" value="${escapeAttr(titulo)}">
         <input type="text" class="rodada-item-descricao" placeholder="Descrição do equipamento" value="${escapeAttr(descricao)}">
       </div>
-      <label class="rodada-multi-label"><input type="checkbox" class="rodada-item-multi" ${pontos && pontos.length ? 'checked' : ''}> Este equipamento possui múltiplos pontos</label>
-      <div class="rodada-item-opcoes-diretas"></div>
-      <button type="button" class="secondary add-rodada-opcao-direta">+ Nova linha</button>
-      <div class="rodada-pontos-wrap" ${pontos && pontos.length ? '' : 'hidden'}>
+      <div class="rodada-pontos-wrap">
         <div class="rodada-pontos-list"></div>
         <button type="button" class="secondary add-rodada-ponto">+ Novo ponto</button>
       </div>
@@ -1304,28 +1450,22 @@ function createRodadaItemRow(titulo, descricao, opcoes, pontos) {
   const tab = row.querySelector('.rodada-item-tab');
   const panel = row.querySelector('.rodada-item-panel');
   const titleInput = row.querySelector('.rodada-item-titulo');
-  const directOptions = row.querySelector('.rodada-item-opcoes-diretas');
-  const directOptionsList = createOptionList(Array.isArray(opcoes) ? opcoes : []);
-  const pointsWrap = row.querySelector('.rodada-pontos-wrap');
   const pointsList = row.querySelector('.rodada-pontos-list');
-  const directAddButton = row.querySelector('.add-rodada-opcao-direta');
   row.classList.add('active');
-  directOptions.appendChild(directOptionsList);
-  (pontos || []).forEach(point => pointsList.appendChild(createPointPanel(typeof point === 'string' ? { nome: point } : point)));
-  directOptions.insertAdjacentHTML('beforebegin', '<div class="rodada-options-title">Opções gerais do equipamento</div>');
+  initialPoints.forEach((point, index) => {
+    pointsList.appendChild(createPointPanel(typeof point === 'string' ? { nome: point } : point, index));
+  });
+  refreshPointPanels(pointsList);
 
   tab.addEventListener('click', () => {
     row.parentElement.querySelectorAll('.rodada-item-row').forEach(item => item.classList.remove('active'));
     row.classList.add('active');
   });
   titleInput.addEventListener('input', () => { tab.textContent = titleInput.value.trim() || 'Novo equipamento'; });
-  row.querySelector('.rodada-item-multi').addEventListener('change', event => {
-    const enabled = event.target.checked;
-    pointsWrap.hidden = !enabled;
-    if (enabled && !pointsList.children.length) pointsList.appendChild(createPointPanel());
+  row.querySelector('.add-rodada-ponto').addEventListener('click', () => {
+    pointsList.appendChild(createPointPanel({}, pointsList.children.length));
+    refreshPointPanels(pointsList);
   });
-  row.querySelector('.add-rodada-opcao-direta').addEventListener('click', () => directOptionsList.appendChild(createOptionRow()));
-  row.querySelector('.add-rodada-ponto').addEventListener('click', () => pointsList.appendChild(createPointPanel()));
   row.querySelector('.remove-rodada-item').addEventListener('click', () => row.remove());
   return row;
 }
@@ -1357,6 +1497,45 @@ function resetRodadaForm() {
 document.getElementById('openRodadaPreviewBtn').addEventListener('click', openRodadaPreview);
 
 const rodadaEditor = document.getElementById('tab-rodada');
+rodadaEditor.addEventListener('focusin', event => {
+  if (event.target.matches('.rodada-opcao-nome')) renderOptionAutocomplete(event.target);
+});
+rodadaEditor.addEventListener('input', event => {
+  if (event.target.matches('.rodada-opcao-nome')) renderOptionAutocomplete(event.target);
+});
+rodadaEditor.addEventListener('keydown', event => {
+  const input = event.target;
+  if (!input.matches('.rodada-opcao-nome')) return;
+  const state = rodadaOptionAutocomplete.get(input);
+  if (event.key === 'ArrowDown' && state && state.choices.length > 1) {
+    event.preventDefault();
+    setActiveOptionSuggestion(input, state.activeIndex + 1);
+  } else if (event.key === 'ArrowUp' && state && state.choices.length > 1) {
+    event.preventDefault();
+    setActiveOptionSuggestion(input, state.activeIndex - 1);
+  } else if (event.key === 'Escape' && state) {
+    event.preventDefault();
+    hideOptionAutocomplete(input);
+  } else if (event.key === 'Tab' && state) {
+    if (acceptOptionSuggestion(input)) event.preventDefault();
+  }
+});
+rodadaEditor.addEventListener('mousedown', event => {
+  if (event.target.closest('.rodada-opcao-sugestao-item')) event.preventDefault();
+});
+rodadaEditor.addEventListener('click', event => {
+  const option = event.target.closest('.rodada-opcao-sugestao-item');
+  if (!option) return;
+  const input = option.closest('.rodada-opcao-nome-wrap').querySelector('.rodada-opcao-nome');
+  acceptOptionSuggestion(input, Number(option.dataset.suggestionIndex));
+});
+rodadaEditor.addEventListener('focusout', event => {
+  if (!event.target.matches('.rodada-opcao-nome')) return;
+  const wrapper = event.target.closest('.rodada-opcao-nome-wrap');
+  window.setTimeout(() => {
+    if (!wrapper.contains(document.activeElement)) hideOptionAutocomplete(event.target);
+  }, 0);
+});
 rodadaEditor.addEventListener('input', scheduleRodadaPreviewBroadcast);
 rodadaEditor.addEventListener('change', scheduleRodadaPreviewBroadcast);
 rodadaEditor.addEventListener('click', event => {
@@ -1364,10 +1543,10 @@ rodadaEditor.addEventListener('click', event => {
     '#addRodadaItemBtn',
     '.add-rodada-ponto',
     '.add-rodada-opcao',
-    '.add-rodada-opcao-direta',
     '.remove-rodada-item',
     '.remove-rodada-ponto',
     '.remove-rodada-opcao',
+    '.copy-rodada-ponto',
     '.rodada-item-tab',
   ].join(','))) {
     scheduleRodadaPreviewBroadcast();
@@ -1447,7 +1626,7 @@ function renderRodadasTable(list) {
         <button class="view-btn" data-action="edit" data-id="${rodada._id}">Editar</button>
         <button class="view-btn" data-action="toggle" data-id="${rodada._id}" data-active="${rodada.ativo}">${rodada.ativo ? 'Desativar' : 'Ativar'}</button>
         <button class="view-btn" data-action="finalize" data-id="${rodada._id}" data-finalizada="${!!rodada.finalizada}">${rodada.finalizada ? 'Reabrir' : 'Finalizar'}</button>
-        <button class="del-btn" data-action="delete" data-id="${rodada._id}">Excluir</button>
+        <button class="del-btn rodada-delete-action" data-action="delete" data-id="${escapeHtmlAdmin(rodada._id)}">Excluir</button>
       </td>
     `;
     tbody.appendChild(tr);
@@ -1745,7 +1924,14 @@ function editRodada(id) {
   list.innerHTML = '';
   const itens = rodada.itens || [];
   if (itens.length) {
-    itens.forEach(item => list.appendChild(createRodadaItemRow(item.titulo || '', item.descricao || '', item.opcoes || [], item.pontos || [])));
+    itens.forEach(item => {
+      const normalizedItem = RODADA_EDITOR_UTILS.normalizeItemForEditor(item);
+      list.appendChild(createRodadaItemRow(
+        normalizedItem.titulo,
+        normalizedItem.descricao,
+        normalizedItem.pontos
+      ));
+    });
   } else {
     list.appendChild(createRodadaItemRow('', ''));
   }
@@ -1788,7 +1974,7 @@ async function deleteRodada(id) {
   const nome = rodada ? rodada.nome : 'esta rodada';
   await confirmAction({
     title: 'Excluir rodada',
-    message: 'Essa ação não pode ser desfeita.',
+    message: `Excluir a rodada "${nome}"? Essa ação não pode ser desfeita.`,
     confirmLabel: 'Excluir',
     danger: true,
     requireText: nome,
@@ -1817,23 +2003,28 @@ document.getElementById('saveRodadaBtn').addEventListener('click', async () => {
   const descricaoCta = document.getElementById('rodadaDescricaoInput').value.trim();
   const ativo = document.getElementById('rodadaAtivaInput').checked;
 
-  const itens = Array.from(document.querySelectorAll('#rodadaItensList .rodada-item-row')).map(row => {
-    const multi = row.querySelector('.rodada-item-multi').checked;
-    const item = {
+  const rows = Array.from(document.querySelectorAll('#rodadaItensList .rodada-item-row'));
+  const invalidPointRow = rows.find(row => {
+    if (!row.querySelector('.rodada-item-titulo').value.trim()) return false;
+    const points = Array.from(row.querySelectorAll('.rodada-pontos-list > .rodada-ponto-panel'));
+    return !points.length || points.some(point => !point.querySelector('.rodada-ponto-nome').value.trim());
+  });
+  if (invalidPointRow) {
+    errorBox.textContent = 'Informe o nome de todos os pontos de cada equipamento.';
+    invalidPointRow.querySelector('.rodada-ponto-nome')?.focus();
+    return;
+  }
+
+  const itens = rows.map(row => {
+    return {
       titulo: row.querySelector('.rodada-item-titulo').value.trim(),
       descricao: row.querySelector('.rodada-item-descricao').value.trim(),
-      opcoes: readOptions(row.querySelector('.rodada-item-opcoes-diretas .rodada-opcoes-list'), false, true),
-      pontos: [],
-    };
-
-    if (multi) {
-      item.pontos = Array.from(row.querySelectorAll('.rodada-pontos-list > .rodada-ponto-panel')).map(point => ({
+      opcoes: [],
+      pontos: Array.from(row.querySelectorAll('.rodada-pontos-list > .rodada-ponto-panel')).map(point => ({
         nome: point.querySelector('.rodada-ponto-nome').value.trim(),
         opcoes: readOptions(point.querySelector('.rodada-opcoes-list'), false, true),
-      })).filter(point => point.nome);
-    }
-
-    return item;
+      })),
+    };
   }).filter(it => it.titulo);
 
   if (!nome) {
